@@ -1,0 +1,27 @@
+{
+  "name": "macrosight-proxy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AWS Lambda proxy for the MacroSight iOS app",
+  "license": "MIT",
+  "author": "Steve Boyer",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
