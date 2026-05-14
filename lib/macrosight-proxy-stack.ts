@@ -44,7 +44,6 @@ export class MacrosightProxyStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(10),
-      reservedConcurrentExecutions: 10, // cost ceiling
       logGroup: handlerLogGroup,
       environment: {
         TABLE_NAME: table.tableName,
