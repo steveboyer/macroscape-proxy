@@ -14,7 +14,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -23,6 +24,8 @@
     "esbuild": "^0.28.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
     "prettier": "^3.3.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.0",
@@ -31,5 +34,14 @@
   "dependencies": {
     "aws-cdk-lib": "^2.253.1",
     "constructs": "^10.6.0"
+  },
+  "lint-staged": {
+    "*.{ts,mjs,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
