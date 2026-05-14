@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macrosight-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP026** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP037** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
 
 ## Contents
 
@@ -31,6 +31,12 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 - [ ] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based AWS auth (no long-lived access keys in repo secrets).
 
 - [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint testing, dotenv-style local config that mirrors Secrets Manager keys without committing values.
+
+- [ ] **MSP033** — Add `permissions: contents: read` to `.github/workflows/ci.yml` so the default `GITHUB_TOKEN` scope is explicit and immune to org/repo setting drift.
+
+- [ ] **MSP034** — Add `concurrency: { group: deploy, cancel-in-progress: false }` to `.github/workflows/deploy.yml` so two merges to `main` in quick succession serialize through `cdk deploy` instead of racing.
+
+- [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass, disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this load-bearing.
 
 ### Auth
 
@@ -65,6 +71,8 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 - [ ] **MSP020** — Request ID propagation. Generate or accept an inbound request ID header, attach it to every log line and to the upstream Anthropic call.
 
 - [ ] **MSP021** — IAM least-privilege audit on the Lambda execution role. Limit to specific DynamoDB table ARN, specific Secrets Manager secret ARNs, and CloudWatch Logs only.
+
+- [ ] **MSP035** — Remove the `console.log('event', JSON.stringify(event))` line in `src/handler.ts` before MSP010 lands. Once auth is in place, that line would log inbound `Authorization` JWTs to CloudWatch. Land alongside or before the structured logging work in MSP019.
 
 ### Testing
 
