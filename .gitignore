@@ -35,3 +35,6 @@ coverage/
 .idea/
 *.swp
 *.swo
+
+# Claude Code local 
+.claude/settings.local.json
