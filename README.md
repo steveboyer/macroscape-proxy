@@ -1,5 +1,7 @@
 # macrosight-proxy
 
+[![CI](https://github.com/steveboyer/macrosight-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/steveboyer/macrosight-proxy/actions/workflows/ci.yml)
+
 AWS Lambda proxy for the [MacroSight](https://github.com/steveboyer) iOS app. Authenticates Apple Sign-In users and forwards `/v1/messages` requests to the Anthropic API, with per-user rate limiting and centralized API key handling.
 
 ## Status
