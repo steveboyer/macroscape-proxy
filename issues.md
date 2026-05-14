@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macrosight-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP037** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP039** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
 
 ## Contents
 
@@ -31,6 +31,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 - [ ] **MSP034** — Add `concurrency: { group: deploy, cancel-in-progress: false }` to `.github/workflows/deploy.yml` so two merges to `main` in quick succession serialize through `cdk deploy` instead of racing.
 
 - [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass, disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this load-bearing.
+
+- [ ] **MSP037** — Don't populate the `macrosight-proxy/upstream-api-key` secret in production until handler-side auth (MSP010–MSP012) is in place. The `HttpApi` `/{proxy+}` route is currently unauthenticated and public; that's harmless while the handler just echoes JSON, but the moment the secret is populated and the handler reads it, the open endpoint becomes a wallet-drain vector against Anthropic.
+
+- [ ] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags. Particularly load-bearing for `deploy.yml`, which has IAM deploy permissions via OIDC. Configure Dependabot (or similar) to keep the pinned SHAs current.
 
 ### Auth
 
