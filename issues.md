@@ -16,19 +16,13 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Infrastructure
 
-- [ ] **MSP001** — CDK app skeleton in TypeScript with esbuild bundling, Node.js 20 runtime target.
-
 - [ ] **MSP002** — Lambda function definition on ARM Graviton2 architecture, sized at the smallest memory tier that handles the workload (start at 512 MB, tune later).
-
-- [ ] **MSP003** — API Gateway HTTP API with Lambda proxy integration. HTTP API rather than REST API; only the routes actually needed.
 
 - [ ] **MSP004** — DynamoDB single-table design. PK conventions: `USER#{appleUserId}` for user records, `USAGE#{appleUserId}` with SK `DATE#{YYYY-MM-DD}` for usage records. TTL attribute on usage rows so old counters auto-expire.
 
 - [ ] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
 
 - [ ] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
-
-- [ ] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based AWS auth (no long-lived access keys in repo secrets).
 
 - [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint testing, dotenv-style local config that mirrors Secrets Manager keys without committing values.
 
@@ -110,4 +104,14 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 (Most recent first; ID order is reverse-chronological.)
 
-_(none yet)_
+- [x] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based AWS auth (no long-lived access keys in repo secrets).
+
+      Done in `8410ec1` (`GithubOidcStack` provisions the OIDC provider + `MacrosightProxyGithubDeployRole`, restricted to `repo:steveboyer/macrosight-proxy:ref:refs/heads/main`) and `cbe75c7` (`.github/workflows/ci.yml` runs lint/format/tsc/synth; `.github/workflows/deploy.yml` assumes the deploy role via `aws-actions/configure-aws-credentials@v4` and runs `cdk deploy MacrosightProxyStack --require-approval never`). Hardening follow-ups split out as MSP033 / MSP034 / MSP036.
+
+- [x] **MSP003** — API Gateway HTTP API with Lambda proxy integration. HTTP API rather than REST API; only the routes actually needed.
+
+      Done in `1daa0c4`. `HttpApi` + `HttpLambdaIntegration` in `lib/macrosight-proxy-stack.ts`. Single catch-all `/{proxy+}` route on any method — fine while the handler is a placeholder; tighten to specific routes once MSP012 / MSP013 land.
+
+- [x] **MSP001** — CDK app skeleton in TypeScript with esbuild bundling, Node.js 20 runtime target.
+
+      Done in `cbcaae3` (scaffold) and `1daa0c4` (`NodejsFunction` with esbuild bundling). Runtime is `NODEJS_22_X` rather than 20 — moved forward to match the project's pinned `.nvmrc` / `engines.node`.
