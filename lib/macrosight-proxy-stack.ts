@@ -66,10 +66,7 @@ export class MacrosightProxyStack extends cdk.Stack {
     api.addRoutes({
       path: '/{proxy+}',
       methods: [apigatewayv2.HttpMethod.ANY],
-      integration: new apigatewayv2Integrations.HttpLambdaIntegration(
-        'ProxyIntegration',
-        handler,
-      ),
+      integration: new apigatewayv2Integrations.HttpLambdaIntegration('ProxyIntegration', handler),
     });
 
     new cdk.CfnOutput(this, 'ApiUrl', {
