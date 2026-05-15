@@ -16,8 +16,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Infrastructure
 
-- [ ] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
-
 - [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint testing, dotenv-style local config that mirrors Secrets Manager keys without committing values.
 
 - [ ] **MSP033** — Add `permissions: contents: read` to `.github/workflows/ci.yml` so the default `GITHUB_TOKEN` scope is explicit and immune to org/repo setting drift.
@@ -101,6 +99,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
+
+      Project rebranded MacroSight → Macroscape; API serves at `api.macroscape.app`. `lib/macrosight-proxy-stack.ts` now provisions a `HostedZone` for `macroscape.app` (RETAIN on destroy), an ACM `Certificate` for `api.macroscape.app` DNS-validated against the zone, an APIGW v2 `DomainName` wired as `defaultDomainMapping` on `HttpApi`, and A + AAAA alias records pointing at `ApiGatewayv2DomainProperties`. Stack outputs the four `HostedZoneNameServers` so they can be copied to the registrar. First deploy hangs on cert validation until NS delegation propagates — minutes, not hours, in practice. Stack and repo names (`MacrosightProxyStack`, `macrosight-proxy`) intentionally unchanged — renaming would orphan the CFN stack and break the OIDC role's trust-policy subject claim; track separately if desired.
 
 - [x] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
 

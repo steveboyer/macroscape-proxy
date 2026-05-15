@@ -7,7 +7,13 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigatewayv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as path from 'path';
+
+const DOMAIN_NAME = 'macroscape.app';
+const API_HOSTNAME = 'api.macroscape.app';
 
 export class MacrosightProxyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -67,8 +73,30 @@ export class MacrosightProxyStack extends cdk.Stack {
     upstreamApiKey.grantRead(handler);
     appleSignInPrivateKey.grantRead(handler);
 
+    // Hosted zone for the apex. RETAIN keeps it (and the registrar NS
+    // delegation) intact across stack tear-downs. On a re-create after
+    // tear-down, delete the orphaned zone first or switch to fromLookup.
+    const hostedZone = new route53.HostedZone(this, 'MacroscapeZone', {
+      zoneName: DOMAIN_NAME,
+    });
+    hostedZone.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+
+    // First deploy hangs here until the four NS records (see
+    // HostedZoneNameServers output) are delegated at the macroscape.app
+    // registrar — validation completes within minutes of propagation.
+    const certificate = new acm.Certificate(this, 'ApiCertificate', {
+      domainName: API_HOSTNAME,
+      validation: acm.CertificateValidation.fromDns(hostedZone),
+    });
+
+    const domainName = new apigatewayv2.DomainName(this, 'ApiDomainName', {
+      domainName: API_HOSTNAME,
+      certificate,
+    });
+
     const api = new apigatewayv2.HttpApi(this, 'ProxyApi', {
-      description: 'MacroSight proxy API',
+      description: 'Macroscape proxy API',
+      defaultDomainMapping: { domainName },
     });
 
     api.addRoutes({
@@ -77,9 +105,38 @@ export class MacrosightProxyStack extends cdk.Stack {
       integration: new apigatewayv2Integrations.HttpLambdaIntegration('ProxyIntegration', handler),
     });
 
+    const aliasTarget = route53.RecordTarget.fromAlias(
+      new route53Targets.ApiGatewayv2DomainProperties(
+        domainName.regionalDomainName,
+        domainName.regionalHostedZoneId,
+      ),
+    );
+
+    new route53.ARecord(this, 'ApiAliasA', {
+      zone: hostedZone,
+      recordName: 'api',
+      target: aliasTarget,
+    });
+
+    new route53.AaaaRecord(this, 'ApiAliasAaaa', {
+      zone: hostedZone,
+      recordName: 'api',
+      target: aliasTarget,
+    });
+
     new cdk.CfnOutput(this, 'ApiUrl', {
+      value: `https://${API_HOSTNAME}`,
+      description: 'Custom domain URL of the proxy API',
+    });
+
+    new cdk.CfnOutput(this, 'ApiGatewayEndpoint', {
       value: api.apiEndpoint,
-      description: 'Base URL of the proxy API',
+      description: 'Native API Gateway endpoint (fallback if custom domain has issues)',
+    });
+
+    new cdk.CfnOutput(this, 'HostedZoneNameServers', {
+      value: cdk.Fn.join(', ', hostedZone.hostedZoneNameServers ?? []),
+      description: 'Delegate these NS records at the macroscape.app registrar',
     });
   }
 }
