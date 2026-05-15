@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macrosight-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP039** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP040** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
 
 ## Contents
 
@@ -27,6 +27,17 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 - [ ] **MSP037** — Don't populate the `macrosight-proxy/upstream-api-key` secret in production until handler-side auth (MSP010–MSP012) is in place. The `HttpApi` `/{proxy+}` route is currently unauthenticated and public; that's harmless while the handler just echoes JSON, but the moment the secret is populated and the handler reads it, the open endpoint becomes a wallet-drain vector against Anthropic.
 
 - [ ] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags. Particularly load-bearing for `deploy.yml`, which has IAM deploy permissions via OIDC. Configure Dependabot (or similar) to keep the pinned SHAs current.
+
+- [ ] **MSP039** — Full rename macrosight → macroscape (the painful one). MSP006 already moved the public surface (`api.macroscape.app`); everything else is still macrosight-branded. Touches:
+
+      - **GitHub repo**: `steveboyer/macrosight-proxy` → `steveboyer/macroscape-proxy`. Auto-redirect handles old URLs but the OIDC trust subject claim must match exactly — update `githubRepo: 'macrosight-proxy'` in `lib/github-oidc-stack.ts`. Update local `git remote set-url origin`. Update CI badge URL in `README.md`.
+      - **CFN stack names**: `MacrosightProxyStack` → `MacroscapeProxyStack` and `MacrosightProxyGithubOidcStack` → `MacroscapeProxyGithubOidcStack` in `bin/macrosight-proxy.ts` (rename the file too). Rename is a **replacement** — CFN deletes the old stack and creates the new one. The DynamoDB table, Route 53 zone, and Secrets Manager secrets survive (RETAIN). On recreate, CDK fails to create secrets with the same name unless the orphans are deleted first or imported via `Secret.fromSecretNameV2` — pick one strategy.
+      - **IAM deploy role**: `MacrosightProxyGithubDeployRole` → `MacroscapeProxyGithubDeployRole` (in `github-oidc-stack.ts`). Update `role-to-assume` ARN in `.github/workflows/deploy.yml`. Update the `cdk deploy` stack name there and the `cdk synth` stack name in `.github/workflows/ci.yml`.
+      - **Secret name prefixes** (`macrosight-proxy/...` → `macroscape-proxy/...`): decide whether to rename + reseed or leave as-is.
+      - **Repo-level**: `package.json` `name`, README title and copy, CLAUDE.md mentions, local working directory.
+      - **Do NOT renumber `MSP###` issue IDs** — they're immutable. Prefix stays.
+
+      Suggested sequencing: rename the GitHub repo first (lowest blast radius); redeploy `MacroscapeProxyGithubOidcStack` with the new role name and update the deploy workflow ARN; then rename the main stack. Expect a few minutes of API downtime during the API Gateway recreate even though the alias records survive.
 
 ### Auth
 
