@@ -42,7 +42,8 @@ export class MacrosightProxyStack extends cdk.Stack {
       entry: path.join(__dirname, '../src/handler.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
-      memorySize: 256,
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: 512,
       timeout: cdk.Duration.seconds(10),
       logGroup: handlerLogGroup,
       environment: {
