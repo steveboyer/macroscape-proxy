@@ -18,8 +18,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP002** — Lambda function definition on ARM Graviton2 architecture, sized at the smallest memory tier that handles the workload (start at 512 MB, tune later).
 
-- [ ] **MSP004** — DynamoDB single-table design. PK conventions: `USER#{appleUserId}` for user records, `USAGE#{appleUserId}` with SK `DATE#{YYYY-MM-DD}` for usage records. TTL attribute on usage rows so old counters auto-expire.
-
 - [ ] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
 
 - [ ] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
@@ -107,6 +105,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP004** — DynamoDB single-table design. PK conventions: `USER#{appleUserId}` for user records, `USAGE#{appleUserId}` with SK `DATE#{YYYY-MM-DD}` for usage records. TTL attribute on usage rows so old counters auto-expire.
+
+      CDK table from `1daa0c4` (`TableV2` with generic `pk`/`sk`/`ttl`) plus the schema-conventions module `src/db/keys.ts`: `userKey`, `usageKey`, `usageTtl` (epoch seconds at end-of-UTC-day + 90-day default retention). End-of-day normalization means rows written at 00:01 and 23:59 of the same date expire together. UTC reset boundary so per-day limits behave consistently across user timezones. Nothing exercises the helpers yet — MSP011 / MSP017 will be the first consumers; fix forward if those reveal a problem.
 
 - [x] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based AWS auth (no long-lived access keys in repo secrets).
 
