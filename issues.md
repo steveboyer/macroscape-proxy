@@ -16,8 +16,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Infrastructure
 
-- [ ] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
-
 - [ ] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
 
 - [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint testing, dotenv-style local config that mirrors Secrets Manager keys without committing values.
@@ -103,6 +101,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
+
+      `lib/macrosight-proxy-stack.ts`: `UpstreamApiKey` (`macrosight-proxy/upstream-api-key`) was already in place from `1daa0c4`; added `AppleSignInPrivateKey` (`macrosight-proxy/apple-signin-private-key`) for client_secret JWT signing against Apple's token endpoint. Both secrets are created empty — populate post-deploy via console/CLI. Lambda gets `grantRead` on both and the ARNs surface via `UPSTREAM_SECRET_ARN` / `APPLE_SIGNIN_SECRET_ARN` env vars. Apple ID-token verification (MSP010) uses JWKS, not this private key — the private key is for the auth-code-exchange / token-revocation paths.
 
 - [x] **MSP002** — Lambda function definition on ARM Graviton2 architecture, sized at the smallest memory tier that handles the workload (start at 512 MB, tune later).
 

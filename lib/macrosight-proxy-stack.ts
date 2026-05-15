@@ -31,6 +31,11 @@ export class MacrosightProxyStack extends cdk.Stack {
       description: 'API key for the upstream service',
     });
 
+    const appleSignInPrivateKey = new secretsmanager.Secret(this, 'AppleSignInPrivateKey', {
+      secretName: 'macrosight-proxy/apple-signin-private-key',
+      description: 'Apple Sign-In .p8 private key for client_secret JWT signing',
+    });
+
     // Explicit log group so we control retention. Without this the Lambda
     // creates a log group with indefinite retention by default.
     const handlerLogGroup = new logs.LogGroup(this, 'HandlerLogGroup', {
@@ -49,6 +54,7 @@ export class MacrosightProxyStack extends cdk.Stack {
       environment: {
         TABLE_NAME: table.tableName,
         UPSTREAM_SECRET_ARN: upstreamApiKey.secretArn,
+        APPLE_SIGNIN_SECRET_ARN: appleSignInPrivateKey.secretArn,
       },
       bundling: {
         minify: true,
@@ -59,6 +65,7 @@ export class MacrosightProxyStack extends cdk.Stack {
 
     table.grantReadWriteData(handler);
     upstreamApiKey.grantRead(handler);
+    appleSignInPrivateKey.grantRead(handler);
 
     const api = new apigatewayv2.HttpApi(this, 'ProxyApi', {
       description: 'MacroSight proxy API',
