@@ -2,7 +2,7 @@
   "name": "macroscape-proxy",
   "version": "0.0.0",
   "private": true,
-  "description": "AWS Lambda proxy for the Macroscape iOS app",
+  "description": "AWS Lambda proxy for the MacroScape iOS app",
   "license": "MIT",
   "author": "Steve Boyer",
   "engines": {

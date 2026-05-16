@@ -20,6 +20,6 @@ jobs:
       - run: npm ci
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::342573629859:role/MacroscapeProxyGithubDeployRole
+          role-to-assume: arn:aws:iam::342573629859:role/MacroScapeProxyGithubDeployRole
           aws-region: us-west-2
-      - run: npx cdk deploy MacroscapeProxyStack --require-approval never
+      - run: npx cdk deploy MacroScapeProxyStack --require-approval never

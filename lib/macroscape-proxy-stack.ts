@@ -15,7 +15,7 @@ import * as path from 'path';
 const DOMAIN_NAME = 'macroscape.app';
 const API_HOSTNAME = 'api.macroscape.app';
 
-export class MacroscapeProxyStack extends cdk.Stack {
+export class MacroScapeProxyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -76,7 +76,7 @@ export class MacroscapeProxyStack extends cdk.Stack {
     // Hosted zone for the apex. RETAIN keeps it (and the registrar NS
     // delegation) intact across stack tear-downs. On a re-create after
     // tear-down, delete the orphaned zone first or switch to fromLookup.
-    const hostedZone = new route53.HostedZone(this, 'MacroscapeZone', {
+    const hostedZone = new route53.HostedZone(this, 'MacroScapeZone', {
       zoneName: DOMAIN_NAME,
     });
     hostedZone.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
@@ -95,7 +95,7 @@ export class MacroscapeProxyStack extends cdk.Stack {
     });
 
     const api = new apigatewayv2.HttpApi(this, 'ProxyApi', {
-      description: 'Macroscape proxy API',
+      description: 'MacroScape proxy API',
       defaultDomainMapping: { domainName },
     });
 

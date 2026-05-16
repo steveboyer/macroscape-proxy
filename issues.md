@@ -102,15 +102,15 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [x] **MSP039** — Full rename macrosight → macroscape (the painful one).
 
-      Code-side rename committed across four commits: stack/class rename (`bin/macrosight-proxy.ts` → `bin/macroscape-proxy.ts`, `lib/macrosight-proxy-stack.ts` → `lib/macroscape-proxy-stack.ts`, `MacrosightProxyStack` → `MacroscapeProxyStack`, `cdk.json` `app` entry, CI/deploy workflow stack names); IAM deploy role rename (`MacrosightProxyGithubDeployRole` → `MacroscapeProxyGithubDeployRole`, OIDC `githubRepo` and stack construct ID, deploy workflow `role-to-assume` ARN); Secrets Manager prefix `macrosight-proxy/*` → `macroscape-proxy/*` (both secrets currently empty so reseed-after-rename is trivial); prose updates to `package.json`, `README.md`, `CLAUDE.md`, this file. Done items MSP001–MSP007 intentionally retain the old `macrosight-*` references as historical artifacts.
+      Code-side rename committed across five commits: stack/class rename (`bin/macrosight-proxy.ts` → `bin/macroscape-proxy.ts`, `lib/macrosight-proxy-stack.ts` → `lib/macroscape-proxy-stack.ts`, `MacrosightProxyStack` → `MacroScapeProxyStack`, `cdk.json` `app` entry, CI/deploy workflow stack names); IAM deploy role rename (`MacrosightProxyGithubDeployRole` → `MacroScapeProxyGithubDeployRole`, OIDC `githubRepo` and stack construct ID, deploy workflow `role-to-assume` ARN); Secrets Manager prefix `macrosight-proxy/*` → `macroscape-proxy/*` (both secrets currently empty so reseed-after-rename is trivial); prose updates to `package.json`, `README.md`, `CLAUDE.md`, this file; and a followup commit switching brand casing to `MacroScape` across display prose and PascalCase identifiers (`MacroScapeProxyStack`, `MacroScapeProxyGithubOidcStack`, `MacroScapeProxyGithubDeployRole`, `MacroScapeZone`). Lowercase slugs (file names, npm name, repo, secret prefixes, domain) intentionally stay all-lowercase. Done items MSP001–MSP007 retain the old `macrosight-*` / `Macrosight*` references as historical artifacts.
 
       Outstanding manual rollout (deferred to the user, recorded here so the order is preserved):
 
       1. `git push` to publish the rename commits.
-      2. Local `cdk deploy MacroscapeProxyGithubOidcStack` — creates the new IAM deploy role alongside the old one. The deploy workflow ARN already points at the new role.
+      2. Local `cdk deploy MacroScapeProxyGithubOidcStack` — creates the new IAM deploy role alongside the old one. The deploy workflow ARN already points at the new role.
       3. Rename the GitHub repo `steveboyer/macrosight-proxy` → `steveboyer/macroscape-proxy`. GitHub auto-redirects old URLs and the new OIDC subject claim matches.
       4. `git remote set-url origin git@github.com:steveboyer/macroscape-proxy.git`.
-      5. `cdk deploy MacroscapeProxyStack` — provisions the new main stack alongside the old one. Brief API downtime as `api.macroscape.app` migrates between API Gateway domains; the Route 53 alias records and hosted zone (RETAIN) survive.
+      5. `cdk deploy MacroScapeProxyStack` — provisions the new main stack alongside the old one. Brief API downtime as `api.macroscape.app` migrates between API Gateway domains; the Route 53 alias records and hosted zone (RETAIN) survive.
       6. After confirming the new stacks are healthy: `cdk destroy MacrosightProxyStack` and `cdk destroy MacrosightProxyGithubOidcStack`. The old secrets enter the 7-day Secrets Manager recovery window and auto-purge.
       7. Optional: `mv /Users/steve/git/macrosight-proxy /Users/steve/git/macroscape-proxy` and update IDE workspace + shell aliases.
 

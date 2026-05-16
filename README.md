@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/steveboyer/macroscape-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/steveboyer/macroscape-proxy/actions/workflows/ci.yml)
 
-AWS Lambda proxy for the [Macroscape](https://github.com/steveboyer) iOS app. Authenticates Apple Sign-In users and forwards `/v1/messages` requests to the Anthropic API, with per-user rate limiting and centralized API key handling.
+AWS Lambda proxy for the [MacroScape](https://github.com/steveboyer) iOS app. Authenticates Apple Sign-In users and forwards `/v1/messages` requests to the Anthropic API, with per-user rate limiting and centralized API key handling.
 
 ## Status
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
-import { MacroscapeProxyStack } from '../lib/macroscape-proxy-stack';
+import { MacroScapeProxyStack } from '../lib/macroscape-proxy-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
 
 const app = new cdk.App();
@@ -10,9 +10,9 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-new MacroscapeProxyStack(app, 'MacroscapeProxyStack', { env });
+new MacroScapeProxyStack(app, 'MacroScapeProxyStack', { env });
 
-new GithubOidcStack(app, 'MacroscapeProxyGithubOidcStack', {
+new GithubOidcStack(app, 'MacroScapeProxyGithubOidcStack', {
   env,
   githubOwner: 'steveboyer',
   githubRepo: 'macroscape-proxy',

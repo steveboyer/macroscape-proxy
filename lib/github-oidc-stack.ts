@@ -26,7 +26,7 @@ export class GithubOidcStack extends cdk.Stack {
     );
 
     const deployRole = new iam.Role(this, 'GithubDeployRole', {
-      roleName: 'MacroscapeProxyGithubDeployRole',
+      roleName: 'MacroScapeProxyGithubDeployRole',
       assumedBy: new iam.FederatedPrincipal(
         githubProvider.openIdConnectProviderArn,
         {
