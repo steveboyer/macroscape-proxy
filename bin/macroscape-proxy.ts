@@ -12,9 +12,9 @@ const env = {
 
 new MacroscapeProxyStack(app, 'MacroscapeProxyStack', { env });
 
-new GithubOidcStack(app, 'MacrosightProxyGithubOidcStack', {
+new GithubOidcStack(app, 'MacroscapeProxyGithubOidcStack', {
   env,
   githubOwner: 'steveboyer',
-  githubRepo: 'macrosight-proxy',
+  githubRepo: 'macroscape-proxy',
   allowedBranches: ['main'],
 });
