@@ -62,8 +62,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP021** — IAM least-privilege audit on the Lambda execution role. Limit to specific DynamoDB table ARN, specific Secrets Manager secret ARNs, and CloudWatch Logs only.
 
-- [ ] **MSP035** — Remove the `console.log('event', JSON.stringify(event))` line in `src/handler.ts` before MSP010 lands. Once auth is in place, that line would log inbound `Authorization` JWTs to CloudWatch. Land alongside or before the structured logging work in MSP019.
-
 ### Testing
 
 - [ ] **MSP022** — Unit tests for Apple ID token verification using fixture JWTs (valid, expired, wrong issuer, wrong audience, malformed).
@@ -100,19 +98,15 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 (Most recent first; ID order is reverse-chronological.)
 
+- [x] **MSP035** — Remove the `console.log('event', JSON.stringify(event))` line in `src/handler.ts` before MSP010 lands.
+
+      Dropped the line. The placeholder handler now logs nothing per request. MSP019 will reintroduce structured, redaction-aware logging when there's an auth-verified user to attach `userId` to. Landing this before MSP010 means no JWT-leak window exists if MSP010 deploys ahead of MSP019.
+
 - [x] **MSP039** — Full rebrand of the project to macroscape (the painful one).
 
       Code-side rebrand committed across five commits: stack and entry-point files now `bin/macroscape-proxy.ts` + `lib/macroscape-proxy-stack.ts` exporting `MacroScapeProxyStack`, with matching updates to `cdk.json` `app` entry and CI/deploy workflow stack names; IAM deploy role renamed to `MacroScapeProxyGithubDeployRole` with OIDC `githubRepo`, stack construct ID, and deploy workflow `role-to-assume` ARN all aligned; Secrets Manager prefix moved to `macroscape-proxy/*` (both secrets currently empty so reseed was trivial); prose updates to `package.json`, `README.md`, `CLAUDE.md`, this file; and a followup commit switching brand casing to `MacroScape` across display prose and PascalCase identifiers (`MacroScapeProxyStack`, `MacroScapeProxyGithubOidcStack`, `MacroScapeProxyGithubDeployRole`, `MacroScapeZone`). Lowercase slugs (file names, npm name, repo, secret prefixes, domain) intentionally stay all-lowercase.
 
-      Outstanding manual rollout (deferred to the user, recorded here so the order is preserved):
-
-      1. `git push` to publish the rename commits.
-      2. Local `cdk deploy MacroScapeProxyGithubOidcStack` — creates the new IAM deploy role alongside the old one. The deploy workflow ARN already points at the new role.
-      3. Rename the GitHub repo to `steveboyer/macroscape-proxy`. GitHub auto-redirects old URLs and the new OIDC subject claim matches.
-      4. `git remote set-url origin git@github.com:steveboyer/macroscape-proxy.git`.
-      5. `cdk deploy MacroScapeProxyStack` — provisions the new main stack alongside the old one. Brief API downtime as `api.macroscape.app` migrates between API Gateway domains; the Route 53 alias records and hosted zone (RETAIN) survive.
-      6. After confirming the new stacks are healthy: destroy the pre-rebrand CloudFormation stacks (now superseded by `MacroScapeProxyStack` / `MacroScapeProxyGithubOidcStack`). The old secrets enter the 7-day Secrets Manager recovery window and auto-purge.
-      7. Optional: rename the local working directory to `macroscape-proxy` and update IDE workspace + shell aliases.
+      Manual rollout completed 2026-05-16: deployed the new OIDC stack, renamed the GitHub repo and re-pointed the remote, deployed `MacroScapeProxyStack` (which created the `macroscape.app` hosted zone — NS records delegated at Namecheap, ACM auto-validated within minutes), destroyed the pre-rebrand `MacrosightProxyStack` and its two orphaned empty DynamoDB tables, and renamed the local working directory.
 
 - [x] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
 
