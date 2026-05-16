@@ -1,8 +1,8 @@
-# macrosight-proxy backlog
+# macroscape-proxy backlog
 
-This file is the single source of truth for macrosight-proxy's backlog and history.
+This file is the single source of truth for macroscape-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP040** is next). IDs never change once assigned, even if items are reordered, edited, or completed.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP040** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix is preserved through the macrosight → macroscape rename (MSP039) so IDs remain stable.
 
 ## Contents
 
@@ -24,20 +24,9 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass, disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this load-bearing.
 
-- [ ] **MSP037** — Don't populate the `macrosight-proxy/upstream-api-key` secret in production until handler-side auth (MSP010–MSP012) is in place. The `HttpApi` `/{proxy+}` route is currently unauthenticated and public; that's harmless while the handler just echoes JSON, but the moment the secret is populated and the handler reads it, the open endpoint becomes a wallet-drain vector against Anthropic.
+- [ ] **MSP037** — Don't populate the `macroscape-proxy/upstream-api-key` secret in production until handler-side auth (MSP010–MSP012) is in place. The `HttpApi` `/{proxy+}` route is currently unauthenticated and public; that's harmless while the handler just echoes JSON, but the moment the secret is populated and the handler reads it, the open endpoint becomes a wallet-drain vector against Anthropic.
 
 - [ ] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags. Particularly load-bearing for `deploy.yml`, which has IAM deploy permissions via OIDC. Configure Dependabot (or similar) to keep the pinned SHAs current.
-
-- [ ] **MSP039** — Full rename macrosight → macroscape (the painful one). MSP006 already moved the public surface (`api.macroscape.app`); everything else is still macrosight-branded. Touches:
-
-      - **GitHub repo**: `steveboyer/macrosight-proxy` → `steveboyer/macroscape-proxy`. Auto-redirect handles old URLs but the OIDC trust subject claim must match exactly — update `githubRepo: 'macrosight-proxy'` in `lib/github-oidc-stack.ts`. Update local `git remote set-url origin`. Update CI badge URL in `README.md`.
-      - **CFN stack names**: `MacrosightProxyStack` → `MacroscapeProxyStack` and `MacrosightProxyGithubOidcStack` → `MacroscapeProxyGithubOidcStack` in `bin/macrosight-proxy.ts` (rename the file too). Rename is a **replacement** — CFN deletes the old stack and creates the new one. The DynamoDB table, Route 53 zone, and Secrets Manager secrets survive (RETAIN). On recreate, CDK fails to create secrets with the same name unless the orphans are deleted first or imported via `Secret.fromSecretNameV2` — pick one strategy.
-      - **IAM deploy role**: `MacrosightProxyGithubDeployRole` → `MacroscapeProxyGithubDeployRole` (in `github-oidc-stack.ts`). Update `role-to-assume` ARN in `.github/workflows/deploy.yml`. Update the `cdk deploy` stack name there and the `cdk synth` stack name in `.github/workflows/ci.yml`.
-      - **Secret name prefixes** (`macrosight-proxy/...` → `macroscape-proxy/...`): decide whether to rename + reseed or leave as-is.
-      - **Repo-level**: `package.json` `name`, README title and copy, CLAUDE.md mentions, local working directory.
-      - **Do NOT renumber `MSP###` issue IDs** — they're immutable. Prefix stays.
-
-      Suggested sequencing: rename the GitHub repo first (lowest blast radius); redeploy `MacroscapeProxyGithubOidcStack` with the new role name and update the deploy workflow ARN; then rename the main stack. Expect a few minutes of API downtime during the API Gateway recreate even though the alias records survive.
 
 ### Auth
 
@@ -110,6 +99,20 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP039** — Full rename macrosight → macroscape (the painful one).
+
+      Code-side rename committed across four commits: stack/class rename (`bin/macrosight-proxy.ts` → `bin/macroscape-proxy.ts`, `lib/macrosight-proxy-stack.ts` → `lib/macroscape-proxy-stack.ts`, `MacrosightProxyStack` → `MacroscapeProxyStack`, `cdk.json` `app` entry, CI/deploy workflow stack names); IAM deploy role rename (`MacrosightProxyGithubDeployRole` → `MacroscapeProxyGithubDeployRole`, OIDC `githubRepo` and stack construct ID, deploy workflow `role-to-assume` ARN); Secrets Manager prefix `macrosight-proxy/*` → `macroscape-proxy/*` (both secrets currently empty so reseed-after-rename is trivial); prose updates to `package.json`, `README.md`, `CLAUDE.md`, this file. Done items MSP001–MSP007 intentionally retain the old `macrosight-*` references as historical artifacts.
+
+      Outstanding manual rollout (deferred to the user, recorded here so the order is preserved):
+
+      1. `git push` to publish the rename commits.
+      2. Local `cdk deploy MacroscapeProxyGithubOidcStack` — creates the new IAM deploy role alongside the old one. The deploy workflow ARN already points at the new role.
+      3. Rename the GitHub repo `steveboyer/macrosight-proxy` → `steveboyer/macroscape-proxy`. GitHub auto-redirects old URLs and the new OIDC subject claim matches.
+      4. `git remote set-url origin git@github.com:steveboyer/macroscape-proxy.git`.
+      5. `cdk deploy MacroscapeProxyStack` — provisions the new main stack alongside the old one. Brief API downtime as `api.macroscape.app` migrates between API Gateway domains; the Route 53 alias records and hosted zone (RETAIN) survive.
+      6. After confirming the new stacks are healthy: `cdk destroy MacrosightProxyStack` and `cdk destroy MacrosightProxyGithubOidcStack`. The old secrets enter the 7-day Secrets Manager recovery window and auto-purge.
+      7. Optional: `mv /Users/steve/git/macrosight-proxy /Users/steve/git/macroscape-proxy` and update IDE workspace + shell aliases.
 
 - [x] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
 
