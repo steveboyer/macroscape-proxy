@@ -33,12 +33,12 @@ export class MacroscapeProxyStack extends cdk.Stack {
     // Secret for the upstream API key. Created with an empty placeholder;
     // populate the real value via console or CLI after first deploy.
     const upstreamApiKey = new secretsmanager.Secret(this, 'UpstreamApiKey', {
-      secretName: 'macrosight-proxy/upstream-api-key',
+      secretName: 'macroscape-proxy/upstream-api-key',
       description: 'API key for the upstream service',
     });
 
     const appleSignInPrivateKey = new secretsmanager.Secret(this, 'AppleSignInPrivateKey', {
-      secretName: 'macrosight-proxy/apple-signin-private-key',
+      secretName: 'macroscape-proxy/apple-signin-private-key',
       description: 'Apple Sign-In .p8 private key for client_secret JWT signing',
     });
 
