@@ -15,7 +15,7 @@ import * as path from 'path';
 const DOMAIN_NAME = 'macroscape.app';
 const API_HOSTNAME = 'api.macroscape.app';
 
-export class MacrosightProxyStack extends cdk.Stack {
+export class MacroscapeProxyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 

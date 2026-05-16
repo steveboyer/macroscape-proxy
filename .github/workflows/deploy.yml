@@ -22,4 +22,4 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::342573629859:role/MacrosightProxyGithubDeployRole
           aws-region: us-west-2
-      - run: npx cdk deploy MacrosightProxyStack --require-approval never
+      - run: npx cdk deploy MacroscapeProxyStack --require-approval never
