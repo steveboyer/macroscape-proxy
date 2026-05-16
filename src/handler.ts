@@ -7,7 +7,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      message: 'macrosight-proxy is alive',
+      message: 'macroscape-proxy is alive',
       path: event.rawPath,
     }),
   };

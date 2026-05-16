@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP040** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix is preserved through the macrosight → macroscape rename (MSP039) so IDs remain stable.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP040** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
 
 ## Contents
 
@@ -44,7 +44,7 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP014** — Header rewriting: strip the caller's Authorization header, attach the Anthropic API key from Secrets Manager, preserve content-type and other Anthropic-required headers (e.g., `anthropic-version`, `anthropic-beta` for prompt caching).
 
-- [ ] **MSP015** — Streaming response support if MacroSight uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
+- [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
 
 - [ ] **MSP016** — Sanitized upstream error pass-through. Forward Anthropic's status codes and a safe subset of error details, never the full upstream response (which may contain implementation details we don't want to leak).
 
@@ -100,31 +100,31 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 (Most recent first; ID order is reverse-chronological.)
 
-- [x] **MSP039** — Full rename macrosight → macroscape (the painful one).
+- [x] **MSP039** — Full rebrand of the project to macroscape (the painful one).
 
-      Code-side rename committed across five commits: stack/class rename (`bin/macrosight-proxy.ts` → `bin/macroscape-proxy.ts`, `lib/macrosight-proxy-stack.ts` → `lib/macroscape-proxy-stack.ts`, `MacrosightProxyStack` → `MacroScapeProxyStack`, `cdk.json` `app` entry, CI/deploy workflow stack names); IAM deploy role rename (`MacrosightProxyGithubDeployRole` → `MacroScapeProxyGithubDeployRole`, OIDC `githubRepo` and stack construct ID, deploy workflow `role-to-assume` ARN); Secrets Manager prefix `macrosight-proxy/*` → `macroscape-proxy/*` (both secrets currently empty so reseed-after-rename is trivial); prose updates to `package.json`, `README.md`, `CLAUDE.md`, this file; and a followup commit switching brand casing to `MacroScape` across display prose and PascalCase identifiers (`MacroScapeProxyStack`, `MacroScapeProxyGithubOidcStack`, `MacroScapeProxyGithubDeployRole`, `MacroScapeZone`). Lowercase slugs (file names, npm name, repo, secret prefixes, domain) intentionally stay all-lowercase. Done items MSP001–MSP007 retain the old `macrosight-*` / `Macrosight*` references as historical artifacts.
+      Code-side rebrand committed across five commits: stack and entry-point files now `bin/macroscape-proxy.ts` + `lib/macroscape-proxy-stack.ts` exporting `MacroScapeProxyStack`, with matching updates to `cdk.json` `app` entry and CI/deploy workflow stack names; IAM deploy role renamed to `MacroScapeProxyGithubDeployRole` with OIDC `githubRepo`, stack construct ID, and deploy workflow `role-to-assume` ARN all aligned; Secrets Manager prefix moved to `macroscape-proxy/*` (both secrets currently empty so reseed was trivial); prose updates to `package.json`, `README.md`, `CLAUDE.md`, this file; and a followup commit switching brand casing to `MacroScape` across display prose and PascalCase identifiers (`MacroScapeProxyStack`, `MacroScapeProxyGithubOidcStack`, `MacroScapeProxyGithubDeployRole`, `MacroScapeZone`). Lowercase slugs (file names, npm name, repo, secret prefixes, domain) intentionally stay all-lowercase.
 
       Outstanding manual rollout (deferred to the user, recorded here so the order is preserved):
 
       1. `git push` to publish the rename commits.
       2. Local `cdk deploy MacroScapeProxyGithubOidcStack` — creates the new IAM deploy role alongside the old one. The deploy workflow ARN already points at the new role.
-      3. Rename the GitHub repo `steveboyer/macrosight-proxy` → `steveboyer/macroscape-proxy`. GitHub auto-redirects old URLs and the new OIDC subject claim matches.
+      3. Rename the GitHub repo to `steveboyer/macroscape-proxy`. GitHub auto-redirects old URLs and the new OIDC subject claim matches.
       4. `git remote set-url origin git@github.com:steveboyer/macroscape-proxy.git`.
       5. `cdk deploy MacroScapeProxyStack` — provisions the new main stack alongside the old one. Brief API downtime as `api.macroscape.app` migrates between API Gateway domains; the Route 53 alias records and hosted zone (RETAIN) survive.
-      6. After confirming the new stacks are healthy: `cdk destroy MacrosightProxyStack` and `cdk destroy MacrosightProxyGithubOidcStack`. The old secrets enter the 7-day Secrets Manager recovery window and auto-purge.
-      7. Optional: `mv /Users/steve/git/macrosight-proxy /Users/steve/git/macroscape-proxy` and update IDE workspace + shell aliases.
+      6. After confirming the new stacks are healthy: destroy the pre-rebrand CloudFormation stacks (now superseded by `MacroScapeProxyStack` / `MacroScapeProxyGithubOidcStack`). The old secrets enter the 7-day Secrets Manager recovery window and auto-purge.
+      7. Optional: rename the local working directory to `macroscape-proxy` and update IDE workspace + shell aliases.
 
 - [x] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
 
-      Project rebranded MacroSight → Macroscape; API serves at `api.macroscape.app`. `lib/macrosight-proxy-stack.ts` now provisions a `HostedZone` for `macroscape.app` (RETAIN on destroy), an ACM `Certificate` for `api.macroscape.app` DNS-validated against the zone, an APIGW v2 `DomainName` wired as `defaultDomainMapping` on `HttpApi`, and A + AAAA alias records pointing at `ApiGatewayv2DomainProperties`. Stack outputs the four `HostedZoneNameServers` so they can be copied to the registrar. First deploy hangs on cert validation until NS delegation propagates — minutes, not hours, in practice. Stack and repo names (`MacrosightProxyStack`, `macrosight-proxy`) intentionally unchanged — renaming would orphan the CFN stack and break the OIDC role's trust-policy subject claim; track separately if desired.
+      Project rebranded to MacroScape; API serves at `api.macroscape.app`. `lib/macroscape-proxy-stack.ts` now provisions a `HostedZone` for `macroscape.app` (RETAIN on destroy), an ACM `Certificate` for `api.macroscape.app` DNS-validated against the zone, an APIGW v2 `DomainName` wired as `defaultDomainMapping` on `HttpApi`, and A + AAAA alias records pointing at `ApiGatewayv2DomainProperties`. Stack outputs the four `HostedZoneNameServers` so they can be copied to the registrar. First deploy hangs on cert validation until NS delegation propagates — minutes, not hours, in practice. At this stage the stack and repo names were intentionally left at their pre-rebrand identifiers — renaming would have orphaned the CFN stack and broken the OIDC role's trust-policy subject claim; that rename was subsequently handled in MSP039.
 
 - [x] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
 
-      `lib/macrosight-proxy-stack.ts`: `UpstreamApiKey` (`macrosight-proxy/upstream-api-key`) was already in place from `1daa0c4`; added `AppleSignInPrivateKey` (`macrosight-proxy/apple-signin-private-key`) for client_secret JWT signing against Apple's token endpoint. Both secrets are created empty — populate post-deploy via console/CLI. Lambda gets `grantRead` on both and the ARNs surface via `UPSTREAM_SECRET_ARN` / `APPLE_SIGNIN_SECRET_ARN` env vars. Apple ID-token verification (MSP010) uses JWKS, not this private key — the private key is for the auth-code-exchange / token-revocation paths.
+      `lib/macroscape-proxy-stack.ts`: `UpstreamApiKey` (`macroscape-proxy/upstream-api-key`) was already in place from `1daa0c4`; added `AppleSignInPrivateKey` (`macroscape-proxy/apple-signin-private-key`) for client_secret JWT signing against Apple's token endpoint. Both secrets are created empty — populate post-deploy via console/CLI. Lambda gets `grantRead` on both and the ARNs surface via `UPSTREAM_SECRET_ARN` / `APPLE_SIGNIN_SECRET_ARN` env vars. Apple ID-token verification (MSP010) uses JWKS, not this private key — the private key is for the auth-code-exchange / token-revocation paths.
 
 - [x] **MSP002** — Lambda function definition on ARM Graviton2 architecture, sized at the smallest memory tier that handles the workload (start at 512 MB, tune later).
 
-      `lib/macrosight-proxy-stack.ts`: added `architecture: lambda.Architecture.ARM_64` and bumped `memorySize` 256 → 512 per the item's stated starting point. Tune downward once the real handler (MSP013–MSP016) is in place and there's profile data to inform the choice.
+      `lib/macroscape-proxy-stack.ts`: added `architecture: lambda.Architecture.ARM_64` and bumped `memorySize` 256 → 512 per the item's stated starting point. Tune downward once the real handler (MSP013–MSP016) is in place and there's profile data to inform the choice.
 
 - [x] **MSP004** — DynamoDB single-table design. PK conventions: `USER#{appleUserId}` for user records, `USAGE#{appleUserId}` with SK `DATE#{YYYY-MM-DD}` for usage records. TTL attribute on usage rows so old counters auto-expire.
 
@@ -132,11 +132,11 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [x] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based AWS auth (no long-lived access keys in repo secrets).
 
-      Done in `8410ec1` (`GithubOidcStack` provisions the OIDC provider + `MacrosightProxyGithubDeployRole`, restricted to `repo:steveboyer/macrosight-proxy:ref:refs/heads/main`) and `cbe75c7` (`.github/workflows/ci.yml` runs lint/format/tsc/synth; `.github/workflows/deploy.yml` assumes the deploy role via `aws-actions/configure-aws-credentials@v4` and runs `cdk deploy MacrosightProxyStack --require-approval never`). Hardening follow-ups split out as MSP033 / MSP034 / MSP036.
+      Done in `8410ec1` (`GithubOidcStack` provisions the OIDC provider + `MacroScapeProxyGithubDeployRole`, restricted to `repo:steveboyer/macroscape-proxy:ref:refs/heads/main`) and `cbe75c7` (`.github/workflows/ci.yml` runs lint/format/tsc/synth; `.github/workflows/deploy.yml` assumes the deploy role via `aws-actions/configure-aws-credentials@v4` and runs `cdk deploy MacroScapeProxyStack --require-approval never`). Hardening follow-ups split out as MSP033 / MSP034 / MSP036.
 
 - [x] **MSP003** — API Gateway HTTP API with Lambda proxy integration. HTTP API rather than REST API; only the routes actually needed.
 
-      Done in `1daa0c4`. `HttpApi` + `HttpLambdaIntegration` in `lib/macrosight-proxy-stack.ts`. Single catch-all `/{proxy+}` route on any method — fine while the handler is a placeholder; tighten to specific routes once MSP012 / MSP013 land.
+      Done in `1daa0c4`. `HttpApi` + `HttpLambdaIntegration` in `lib/macroscape-proxy-stack.ts`. Single catch-all `/{proxy+}` route on any method — fine while the handler is a placeholder; tighten to specific routes once MSP012 / MSP013 land.
 
 - [x] **MSP001** — CDK app skeleton in TypeScript with esbuild bundling, Node.js 20 runtime target.
 

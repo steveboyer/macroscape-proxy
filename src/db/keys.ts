@@ -1,5 +1,5 @@
 /**
- * Single-table key shapes for the macrosight-proxy DynamoDB table.
+ * Single-table key shapes for the macroscape-proxy DynamoDB table.
  *
  * User:  pk = USER#<appleUserId>,  sk = PROFILE
  * Usage: pk = USAGE#<appleUserId>, sk = DATE#YYYY-MM-DD (UTC)
