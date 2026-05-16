@@ -73,17 +73,14 @@ export class MacroScapeProxyStack extends cdk.Stack {
     upstreamApiKey.grantRead(handler);
     appleSignInPrivateKey.grantRead(handler);
 
-    // Hosted zone for the apex. RETAIN keeps it (and the registrar NS
-    // delegation) intact across stack tear-downs. On a re-create after
-    // tear-down, delete the orphaned zone first or switch to fromLookup.
-    const hostedZone = new route53.HostedZone(this, 'MacroScapeZone', {
-      zoneName: DOMAIN_NAME,
+    // Import the existing hosted zone (created by the pre-rebrand stack;
+    // survived via RETAIN). fromLookup snapshots the zone ID into
+    // cdk.context.json. The registrar's NS delegation already points at
+    // this zone, so ACM DNS validation completes immediately.
+    const hostedZone = route53.HostedZone.fromLookup(this, 'MacroScapeZone', {
+      domainName: DOMAIN_NAME,
     });
-    hostedZone.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
 
-    // First deploy hangs here until the four NS records (see
-    // HostedZoneNameServers output) are delegated at the macroscape.app
-    // registrar — validation completes within minutes of propagation.
     const certificate = new acm.Certificate(this, 'ApiCertificate', {
       domainName: API_HOSTNAME,
       validation: acm.CertificateValidation.fromDns(hostedZone),
@@ -132,11 +129,6 @@ export class MacroScapeProxyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiGatewayEndpoint', {
       value: api.apiEndpoint,
       description: 'Native API Gateway endpoint (fallback if custom domain has issues)',
-    });
-
-    new cdk.CfnOutput(this, 'HostedZoneNameServers', {
-      value: cdk.Fn.join(', ', hostedZone.hostedZoneNameServers ?? []),
-      description: 'Delegate these NS records at the macroscape.app registrar',
     });
   }
 }

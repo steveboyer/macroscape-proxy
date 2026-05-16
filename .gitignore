@@ -16,7 +16,6 @@ build/
 # CDK
 cdk.out/
 .cdk.staging/
-cdk.context.json
 
 # Env / secrets
 .env
