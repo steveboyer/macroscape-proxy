@@ -18,15 +18,9 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint testing, dotenv-style local config that mirrors Secrets Manager keys without committing values.
 
-- [ ] **MSP033** — Add `permissions: contents: read` to `.github/workflows/ci.yml` so the default `GITHUB_TOKEN` scope is explicit and immune to org/repo setting drift.
-
-- [ ] **MSP034** — Add `concurrency: { group: deploy, cancel-in-progress: false }` to `.github/workflows/deploy.yml` so two merges to `main` in quick succession serialize through `cdk deploy` instead of racing.
-
 - [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass, disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this load-bearing.
 
 - [ ] **MSP037** — Don't populate the `macroscape-proxy/upstream-api-key` secret in production until handler-side auth (MSP010–MSP012) is in place. The `HttpApi` `/{proxy+}` route is currently unauthenticated and public; that's harmless while the handler just echoes JSON, but the moment the secret is populated and the handler reads it, the open endpoint becomes a wallet-drain vector against Anthropic.
-
-- [ ] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags. Particularly load-bearing for `deploy.yml`, which has IAM deploy permissions via OIDC. Configure Dependabot (or similar) to keep the pinned SHAs current.
 
 ### Auth
 
@@ -97,6 +91,18 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags.
+
+      All three actions pinned to their latest v4-series SHA (preserving the current major; major bumps stay deliberate): `actions/checkout` → `34e114876b0b11c390a56381ad16ebd13914f8d5` (v4.3.1), `actions/setup-node` → `49933ea5288caeca8642d1e84afbd3f7d6820020` (v4.4.0), `aws-actions/configure-aws-credentials` → `7474bc4690e29a8392af63c5b98e7449536d5c3a` (v4.3.1). New `.github/dependabot.yml` runs the `github-actions` ecosystem weekly to keep pins current; Dependabot will surface v5/v6 majors as reviewable PRs rather than silently consuming them.
+
+- [x] **MSP034** — Add `concurrency: { group: deploy, cancel-in-progress: false }` to `.github/workflows/deploy.yml`.
+
+      Two merges to `main` in quick succession now serialize through `cdk deploy` instead of racing for the CloudFormation stack lock. `cancel-in-progress: false` is deliberate — never abandon an in-flight deploy mid-rollout, since CFN can be left in `UPDATE_IN_PROGRESS` requiring manual recovery.
+
+- [x] **MSP033** — Add `permissions: contents: read` to `.github/workflows/ci.yml`.
+
+      Top-level `permissions` block makes the default `GITHUB_TOKEN` scope explicit and immune to org/repo setting drift. `deploy.yml` already had explicit permissions (`id-token: write` + `contents: read`); CI just needs read.
 
 - [x] **MSP035** — Remove the `console.log('event', JSON.stringify(event))` line in `src/handler.ts` before MSP010 lands.
 
