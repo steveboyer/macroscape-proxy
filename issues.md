@@ -22,8 +22,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Auth
 
-- [ ] **MSP009** — Apple Developer Sign-In configuration: services ID, key, team ID. Document the values needed in README and store the private key in Secrets Manager (MSP005).
-
 ### Forwarding
 
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
@@ -64,6 +62,14 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP009** — Apple Developer Sign-In configuration: Services ID, Key, Team ID; document and populate the private-key secret.
+
+      Documentation-only task (no code change). New `docs/apple-setup.md` covers what to register at developer.apple.com — App ID with Sign in with Apple capability (currently required, for the iOS native flow the proxy already supports), and the Services ID + Key (`.p8`) + Team ID (currently deferred, for future server-side flows like revocation/refresh/web-flow). Includes the `aws secretsmanager put-secret-value` command for populating `macroscape-proxy/apple-signin-private-key` with the `.p8` contents.
+
+      No env-var plumbing for the three IDs yet (YAGNI — `APPLE_TEAM_ID`, `APPLE_SERVICES_ID`, `APPLE_KEY_ID` will be added to `lib/macroscape-proxy-stack.ts` when the first code path that consumes them lands). `APPLE_AUD` already documents the iOS Bundle ID coupling. CLAUDE.md updated to point future sessions at `docs/`.
+
+      Operational follow-up (manual, when ready): user registers the Services ID + Key + Team ID and `put-secret-value`s the `.p8` contents. Lambda already has IAM read on the secret from MSP005 + MSP021.
 
 - [x] **MSP042** — Adopt `/v1/<upstream-provider>/<endpoint>` URL convention for all upstream-forwarding routes.
 

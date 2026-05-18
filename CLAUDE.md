@@ -6,6 +6,8 @@ Backlog: see issues.md (single source of truth for what's done, in progress, and
 
 API contract lives in CONTRACT.md in this repo.
 
+Operator setup docs live under `docs/` (e.g., `docs/apple-setup.md` for the developer.apple.com registrations Sign in with Apple needs).
+
 ## Project
 
 AWS Lambda proxy for the MacroScape iOS app, served at `https://api.macroscape.app`. Authenticates Sign in with Apple callers (id_token in `Authorization: Bearer`), auto-creates a user record on first authenticated request, enforces a per-user daily rate limit on `/v1/messages`, and forwards those requests to the Anthropic API with a strict header allowlist and centralized API key handling.
