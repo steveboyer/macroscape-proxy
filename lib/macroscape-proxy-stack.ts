@@ -61,6 +61,7 @@ export class MacroScapeProxyStack extends cdk.Stack {
         TABLE_NAME: table.tableName,
         UPSTREAM_SECRET_ARN: upstreamApiKey.secretArn,
         APPLE_SIGNIN_SECRET_ARN: appleSignInPrivateKey.secretArn,
+        APPLE_AUD: 'app.macroscape.MacroScape',
       },
       bundling: {
         minify: true,

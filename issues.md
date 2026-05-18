@@ -26,8 +26,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP009** — Apple Developer Sign-In configuration: services ID, key, team ID. Document the values needed in README and store the private key in Secrets Manager (MSP005).
 
-- [ ] **MSP010** — Apple ID token verification: fetch and cache JWKS, validate signature, check `iss`, `aud`, and `exp` claims. Reject tokens that fail any check with 401.
-
 - [ ] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent: subsequent requests look up rather than recreate.
 
 - [ ] **MSP012** — `/health` endpoint that authenticates the caller and returns the verified user identity. First end-to-end auth proof point.
@@ -91,6 +89,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP010** — Apple ID token verification: fetch and cache JWKS, validate signature, check `iss`, `aud`, and `exp` claims.
+
+      New module `src/auth/appleVerifier.ts` exports `verifyAppleIdToken(token)` and a typed `AppleTokenError` (with discriminator `reason`: `expired` / `invalid_signature` / `invalid_issuer` / `invalid_audience` / `malformed` / `jwks_fetch_failed`) so the eventual route handler (MSP012) can map errors to 401 vs 500. Uses `jose` — module-scope `createRemoteJWKSet` singleton survives Lambda warm starts, so warm invocations reuse the cached JWKS (cold starts pay one HTTPS fetch from `appleid.apple.com/auth/keys`). Issuer is hardcoded (`https://appleid.apple.com`); audience is the iOS Bundle ID `app.macroscape.MacroScape`, passed as `APPLE_AUD` env var via `lib/macroscape-proxy-stack.ts` so a deploy-time misconfiguration fails fast. `sub` claim presence is asserted at runtime (Apple always populates it). Out of scope here: the route that *calls* the verifier (MSP012) and fixture-driven unit tests (MSP022).
 
 - [x] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags.
 

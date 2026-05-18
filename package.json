@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "aws-cdk-lib": "^2.253.1",
-    "constructs": "^10.6.0"
+    "constructs": "^10.6.0",
+    "jose": "^6.2.3"
   },
   "lint-staged": {
     "*.{ts,mjs,js}": [
