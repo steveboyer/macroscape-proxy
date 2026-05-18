@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP042** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP043** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
 
 ## Contents
 
@@ -64,6 +64,14 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP042** — Adopt `/v1/<upstream-provider>/<endpoint>` URL convention for all upstream-forwarding routes.
+
+      Decision: every route that forwards to a third-party upstream lives at `/v1/<upstream>/<endpoint>`. Provider visible in the URL gives free debugging/observability, makes per-upstream rate-limit counters and cost attribution real, and gives future upstreams (`/v1/openai/...`, `/v1/openfoodfacts/...`) a clean slot. Routes that don't forward upstream (currently only `/health`) skip the prefix.
+
+      Concrete changes: added `/v1/usda/foods/search` as the canonical USDA search route (handler unchanged; `/v1/foods/search` now a legacy alias on the same deprecation cadence as `/v1/messages`). Renamed the rate-limit group from `foods` to `usda` so the group identifier matches the URL convention end-to-end (DynamoDB key prefix `USAGE-usda#<sub>`, env var `DEFAULT_DAILY_LIMIT_USDA`, per-user override attribute `dailyLimitUsda`). No data migration needed — no production users yet.
+
+      CONTRACT.md now has a `## URL conventions` section near the top documenting the pattern + rationale to prevent future relitigation. Endpoint section heading and rate-limit examples updated.
 
 - [x] **MSP041** — Proxy USDA FoodData Central `/foods/search` via `GET /v1/foods/search`.
 

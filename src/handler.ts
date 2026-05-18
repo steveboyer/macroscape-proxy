@@ -35,12 +35,12 @@ async function dispatch(
   if (path === '/health') {
     return handleHealth(event, logger);
   }
-  // /v1/messages is the legacy alias; both route to handleAnthropic.
-  // Plan to remove the legacy alias once iOS confirms cutover.
-  if (path === '/v1/messages' || path === '/v1/anthropic/messages') {
+  // Provider-prefixed `/v1/<upstream>/<endpoint>` is canonical; flat paths
+  // are legacy aliases scheduled for removal once iOS confirms cutover.
+  if (path === '/v1/anthropic/messages' || path === '/v1/messages') {
     return handleAnthropic(event, logger);
   }
-  if (path === '/v1/foods/search') {
+  if (path === '/v1/usda/foods/search' || path === '/v1/foods/search') {
     return handleFoodsSearch(event, logger);
   }
   return jsonResponse(404, { error: 'not_found', path });
@@ -98,7 +98,7 @@ async function handleFoodsSearch(
   try {
     const claims = await authenticate(event);
     logger.setUserId(claims.sub);
-    await checkAndIncrement(claims.sub, 'foods');
+    await checkAndIncrement(claims.sub, 'usda');
     const result = await proxyFoodsSearch(event.queryStringParameters, logger.requestId);
     logger.setUpstreamStatus(result.statusCode);
     return {

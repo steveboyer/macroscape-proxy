@@ -8,6 +8,30 @@ The API surface clients consume to talk to the proxy. Currently the only client 
 https://api.macroscape.app
 ```
 
+## URL conventions
+
+Upstream-forwarding endpoints follow the pattern:
+
+```
+/v1/<upstream-provider>/<endpoint>
+```
+
+Examples:
+
+- `/v1/anthropic/messages` — proxies to `api.anthropic.com`
+- `/v1/usda/foods/search` — proxies to `api.nal.usda.gov`
+
+The upstream provider is visible in the URL on purpose. This:
+
+- makes debugging and observability trivial (no path-to-provider mapping required);
+- enables per-upstream rate-limit counters, cost attribution, and per-provider configuration;
+- gives future upstreams a clean slot (`/v1/openai/...`, `/v1/openfoodfacts/...`);
+- makes provider swaps an explicit decision at the URL level rather than a hidden one.
+
+Routes that don't forward to a third-party upstream don't follow this pattern — currently only `/health`.
+
+Legacy unprefixed paths (`/v1/messages`, `/v1/foods/search`) exist as transitional aliases and are scheduled for removal — see the individual endpoint sections.
+
 ## Authentication
 
 All endpoints require **Sign in with Apple**. The client sends Apple's id_token in every request:
@@ -105,14 +129,16 @@ If the upstream response isn't parseable JSON or doesn't match Anthropic's stand
 
 **Response headers forwarded back to caller:** `content-type` only. Anthropic's `request-id`, `anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional headers be exposed, file an issue.
 
-### `GET /v1/foods/search`
+### `GET /v1/usda/foods/search` (and legacy alias `GET /v1/foods/search`)
 
 Proxies the request to `https://api.nal.usda.gov/fdc/v1/foods/search`. **Rate-limited** (see below).
+
+`/v1/foods/search` is a legacy alias — same handler, same behavior. Use `/v1/usda/foods/search` in new code. The flat `/v1/foods/search` path will be removed in a future release once the iOS client has cut over (target window: at least 90 days after iOS confirms cutover).
 
 **Request:**
 
 ```
-GET /v1/foods/search?query=<text>&dataType=Foundation,SR%20Legacy&pageSize=15
+GET /v1/usda/foods/search?query=<text>&dataType=Foundation,SR%20Legacy&pageSize=15
 Authorization: Bearer <id_token>
 ```
 
@@ -164,12 +190,12 @@ The recommended client mapping:
 
 ## Rate limiting
 
-Rate-limited endpoints are `POST /v1/anthropic/messages` (and the legacy alias `POST /v1/messages`) and `GET /v1/foods/search`. `/health` is **not** rate-limited.
+Rate-limited endpoints are `POST /v1/anthropic/messages` (and the legacy alias `POST /v1/messages`) and `GET /v1/usda/foods/search` (and the legacy alias `GET /v1/foods/search`). `/health` is **not** rate-limited.
 
 The proxy tracks **two counters per user per UTC day**:
 
 - **Total counter** — incremented on every rate-limited request, regardless of endpoint. Enforced against `DEFAULT_DAILY_LIMIT` (currently `100/day`) unless the user's `dailyLimit` attribute overrides it.
-- **Per-endpoint-group counter** — incremented on every rate-limited request within a group (`anthropic`, `foods`). Always tracked for observability. **Enforced** only when a `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>` attribute is set (e.g., `DEFAULT_DAILY_LIMIT_FOODS=500`, `dailyLimitFoods=500`). Currently no per-group enforcement is configured; total-only is the binding limit.
+- **Per-upstream-group counter** — incremented on every rate-limited request within an upstream group. Group names match the URL convention's `<upstream-provider>` segment (`anthropic`, `usda`; future: `openai`, etc.). Always tracked for observability. **Enforced** only when a `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>` attribute is set (e.g., `DEFAULT_DAILY_LIMIT_USDA=500`, `dailyLimitUsda=500`). Currently no per-group enforcement is configured; total-only is the binding limit.
 
 Counted regardless of upstream outcome — upstream errors, 5xx responses, etc. still consume quota.
 
@@ -183,7 +209,7 @@ Content-Type: application/json
 {
   "error": "daily_limit_exceeded",
   "scope": "total",          // or "group"
-  "group": "foods",          // present iff scope == "group"
+  "group": "usda",           // present iff scope == "group"; one of: anthropic, usda, ...
   "limit": 100,
   "count": 101,
   "resetsAt": "<ISO timestamp of next UTC midnight>"
@@ -196,5 +222,5 @@ The client gets both the header (per RFC 7231) and the body fields (for UI). Use
 
 These are tracked in `issues.md` and will land in future releases. Clients should be prepared for them to change:
 
-- **Streaming responses** (`stream: true` in Anthropic body) — proxy currently buffers the full response and may not handle Anthropic SSE chunked transfer correctly. If your client needs streaming, file an issue before depending on `/v1/messages` for streaming calls.
+- **Streaming responses** (`stream: true` in Anthropic body) — proxy currently buffers the full response and may not handle Anthropic SSE chunked transfer correctly. If your client needs streaming, file an issue before depending on `/v1/anthropic/messages` for streaming calls.
 - **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy to add when requested.
