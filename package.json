@@ -32,6 +32,8 @@
     "typescript-eslint": "^8.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1048.0",
+    "@aws-sdk/lib-dynamodb": "^3.1048.0",
     "aws-cdk-lib": "^2.253.1",
     "constructs": "^10.6.0",
     "jose": "^6.2.3"

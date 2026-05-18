@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { verifyAppleIdToken, AppleTokenError } from './auth/appleVerifier';
+import { upsertUser } from './db/users';
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   if (event.rawPath === '/health') {
@@ -15,7 +16,8 @@ async function handleHealth(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
   try {
     const claims = await verifyAppleIdToken(token);
-    return jsonResponse(200, { ok: true, userId: claims.sub });
+    const { created } = await upsertUser(claims.sub);
+    return jsonResponse(200, { ok: true, userId: claims.sub, created });
   } catch (err) {
     if (err instanceof AppleTokenError) {
       return jsonResponse(401, { error: err.reason });

@@ -26,8 +26,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP009** — Apple Developer Sign-In configuration: services ID, key, team ID. Document the values needed in README and store the private key in Secrets Manager (MSP005).
 
-- [ ] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent: subsequent requests look up rather than recreate.
-
 ### Forwarding
 
 - [ ] **MSP013** — `/v1/messages` POST handler that proxies to `https://api.anthropic.com/v1/messages`. Body passed through unchanged.
@@ -87,6 +85,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent: subsequent requests look up rather than recreate.
+
+      New `src/db/users.ts` exports `upsertUser(appleUserId): { created }`. Uses `DynamoDBDocumentClient` (lib-dynamodb) with `PutCommand` + `ConditionExpression: attribute_not_exists(pk)` to insert idempotently — the first write succeeds (`created: true`), subsequent writes hit the conditional check and return `created: false` without a second round trip to read the row. Item shape: `{ pk: 'USER#<sub>', sk: 'PROFILE', createdAt: <ISO timestamp> }` per the conventions in `src/db/keys.ts` (MSP004). Wired into `/health` so the response is now `{ ok: true, userId, created }`. Lambda already has `grantReadWriteData` on the table from MSP001/MSP004. Module-scope DynamoDB client survives warm starts.
 
 - [x] **MSP012** — `/health` endpoint that authenticates the caller and returns the verified user identity. First end-to-end auth proof point.
 
