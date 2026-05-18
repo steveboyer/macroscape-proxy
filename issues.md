@@ -34,10 +34,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Rate limiting
 
-- [ ] **MSP017** — Daily request counter in DynamoDB keyed by user and date. Atomic increment via `UpdateItem` with `ADD`.
-
-- [ ] **MSP018** — Configurable per-user daily limit. Return 429 with `Retry-After` header when exceeded. Default limit set in CDK config, overridable per user via DynamoDB attribute.
-
 ### Observability and security
 
 - [ ] **MSP019** — Structured CloudWatch logging with secret redaction. JSON log shape: `requestId`, `userId`, `route`, `latencyMs`, `upstreamStatus`. Anthropic API key and Apple private key never appear in logs (assert via lint rule or test).
@@ -81,6 +77,14 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP017 + MSP018** — Per-user daily rate limit on `/v1/messages` with 429 + `Retry-After`.
+
+      New `src/rateLimit/dailyLimit.ts` exports `checkAndIncrement(userId)` and `RateLimitError`. Flow per `/v1/messages` request (after auth, before upstream): (1) `GetCommand` on `USER#<sub>/PROFILE` reading `dailyLimit` attribute, fall back to `DEFAULT_DAILY_LIMIT` env var (currently `100`); (2) atomic `UpdateCommand` on `USAGE#<sub>/DATE#YYYY-MM-DD` — `ADD #count :one SET #ttl = if_not_exists(#ttl, :ttl)` — returns the new count post-increment in one round trip, sets the 90-day TTL the first time the row is touched. If new count > limit, throw `RateLimitError`; handler maps to `429 { error: "daily_limit_exceeded", limit, count, resetsAt }` with header `Retry-After: <seconds until UTC midnight>`. Over-counting after rejection is intentional and benign — rejected requests still bump the counter, which doesn't change outcomes for that day.
+
+      Extracted `src/db/client.ts` (shared DynamoDBDocumentClient singleton + `getTableName` helper) so `users.ts` and `dailyLimit.ts` share one client/pool instead of each instantiating their own.
+
+      Per-user override: set the `dailyLimit` number attribute on the user's `USER#<sub>/PROFILE` row directly via DynamoDB console/CLI. No admin endpoint yet (MSP031, future). `/health` is intentionally NOT rate-limited — it's cheap, doesn't call upstream, and the iOS app may poll it to refresh user state.
 
 - [x] **MSP013 + MSP014** — `/v1/messages` POST proxy to `https://api.anthropic.com/v1/messages` with header rewriting.
 

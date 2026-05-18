@@ -62,6 +62,7 @@ export class MacroScapeProxyStack extends cdk.Stack {
         UPSTREAM_SECRET_ARN: upstreamApiKey.secretArn,
         APPLE_SIGNIN_SECRET_ARN: appleSignInPrivateKey.secretArn,
         APPLE_AUD: 'app.macroscape.MacroScape',
+        DEFAULT_DAILY_LIMIT: '100',
       },
       bundling: {
         minify: true,
