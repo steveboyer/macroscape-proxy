@@ -1,12 +1,40 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { verifyAppleIdToken, AppleTokenError } from './auth/appleVerifier';
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: 'macroscape-proxy is alive',
-      path: event.rawPath,
-    }),
-  };
+  if (event.rawPath === '/health') {
+    return handleHealth(event);
+  }
+  return jsonResponse(404, { error: 'not_found', path: event.rawPath });
 };
+
+async function handleHealth(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  const token = extractBearerToken(event);
+  if (!token) {
+    return jsonResponse(401, { error: 'missing_bearer_token' });
+  }
+  try {
+    const claims = await verifyAppleIdToken(token);
+    return jsonResponse(200, { ok: true, userId: claims.sub });
+  } catch (err) {
+    if (err instanceof AppleTokenError) {
+      return jsonResponse(401, { error: err.reason });
+    }
+    throw err;
+  }
+}
+
+function extractBearerToken(event: APIGatewayProxyEventV2): string | null {
+  const header = event.headers.authorization ?? event.headers.Authorization;
+  if (!header) return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+}
+
+function jsonResponse(statusCode: number, body: object): APIGatewayProxyResultV2 {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}

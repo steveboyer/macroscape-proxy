@@ -28,8 +28,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent: subsequent requests look up rather than recreate.
 
-- [ ] **MSP012** — `/health` endpoint that authenticates the caller and returns the verified user identity. First end-to-end auth proof point.
-
 ### Forwarding
 
 - [ ] **MSP013** — `/v1/messages` POST handler that proxies to `https://api.anthropic.com/v1/messages`. Body passed through unchanged.
@@ -89,6 +87,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP012** — `/health` endpoint that authenticates the caller and returns the verified user identity. First end-to-end auth proof point.
+
+      `src/handler.ts` now routes on `event.rawPath`: `/health` extracts the Bearer token from `Authorization`, calls `verifyAppleIdToken` (MSP010), returns `{ ok: true, userId: claims.sub }` on success or `401 { error: <reason> }` on `AppleTokenError` (one of `missing_bearer_token`, `expired`, `invalid_signature`, `invalid_issuer`, `invalid_audience`, `malformed`, `jwks_fetch_failed`). Unexpected errors propagate to Lambda 500. All other paths return 404. The previous placeholder echo (any path → 200 with `macroscape-proxy is alive`) is gone — `GET /` is now 404. Helpers (`extractBearerToken`, `jsonResponse`) live inline in `handler.ts`; extract into a module when MSP013 also needs them.
 
 - [x] **MSP010** — Apple ID token verification: fetch and cache JWKS, validate signature, check `iss`, `aud`, and `exp` claims.
 
