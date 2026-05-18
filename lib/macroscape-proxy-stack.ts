@@ -43,6 +43,11 @@ export class MacroScapeProxyStack extends cdk.Stack {
       description: 'Apple Sign-In .p8 private key for client_secret JWT signing',
     });
 
+    const usdaApiKey = new secretsmanager.Secret(this, 'UsdaApiKey', {
+      secretName: 'macroscape-proxy/usda-api-key',
+      description: 'USDA FoodData Central API key',
+    });
+
     // Explicit log group so we control retention. Without this the Lambda
     // creates a log group with indefinite retention by default.
     const handlerLogGroup = new logs.LogGroup(this, 'HandlerLogGroup', {
@@ -62,6 +67,7 @@ export class MacroScapeProxyStack extends cdk.Stack {
         TABLE_NAME: table.tableName,
         UPSTREAM_SECRET_ARN: upstreamApiKey.secretArn,
         APPLE_SIGNIN_SECRET_ARN: appleSignInPrivateKey.secretArn,
+        USDA_SECRET_ARN: usdaApiKey.secretArn,
         APPLE_AUD: 'app.macroscape.MacroScape',
         DEFAULT_DAILY_LIMIT: '100',
       },
@@ -83,7 +89,11 @@ export class MacroScapeProxyStack extends cdk.Stack {
     handler.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['secretsmanager:GetSecretValue'],
-        resources: [upstreamApiKey.secretArn, appleSignInPrivateKey.secretArn],
+        resources: [
+          upstreamApiKey.secretArn,
+          appleSignInPrivateKey.secretArn,
+          usdaApiKey.secretArn,
+        ],
       }),
     );
 

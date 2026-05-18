@@ -1,4 +1,7 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { UpstreamError } from './errors';
+
+export { UpstreamError };
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -17,17 +20,6 @@ const FORWARDED_HEADER_NAMES = new Set([
 // becomes a routine concern, at which point this needs a TTL or version check.
 const secretsClient = new SecretsManagerClient({});
 let cachedApiKey: string | null = null;
-
-export class UpstreamError extends Error {
-  readonly statusCode: number;
-  readonly reason: string;
-  constructor(statusCode: number, reason: string, message?: string) {
-    super(message ?? reason);
-    this.statusCode = statusCode;
-    this.reason = reason;
-    this.name = 'UpstreamError';
-  }
-}
 
 export interface ProxyResponse {
   statusCode: number;

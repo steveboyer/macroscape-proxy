@@ -24,6 +24,13 @@ export const usageKey = (appleUserId: string, date: Date): ItemKey => ({
   sk: `DATE#${toUtcDateString(date)}`,
 });
 
+// Per-endpoint-group counter. Sits alongside the total-only `usageKey` so a
+// future enforcement decision can choose total, per-group, or both.
+export const groupUsageKey = (appleUserId: string, group: string, date: Date): ItemKey => ({
+  pk: `USAGE-${group}#${appleUserId}`,
+  sk: `DATE#${toUtcDateString(date)}`,
+});
+
 export const usageTtl = (date: Date, retentionDays = DEFAULT_USAGE_RETENTION_DAYS): number => {
   const startOfNextDayUtc = Date.UTC(
     date.getUTCFullYear(),

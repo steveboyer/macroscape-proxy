@@ -57,14 +57,16 @@ Authorization: Bearer <id_token>
 
 `created: true` on the user's first `/health`; `false` on subsequent calls.
 
-### `POST /v1/messages`
+### `POST /v1/anthropic/messages` (and legacy alias `POST /v1/messages`)
 
 Proxies the request to `https://api.anthropic.com/v1/messages`. Body is forwarded **unchanged**. Response status + `content-type` + body are forwarded back unchanged. **Rate-limited** (see below).
+
+`/v1/messages` is a legacy alias — same handler, same behavior. Use `/v1/anthropic/messages` in new code. The flat `/v1/messages` path will be removed in a future release once the iOS client has cut over (target window: at least 90 days after iOS confirms cutover).
 
 **Request:**
 
 ```
-POST /v1/messages
+POST /v1/anthropic/messages
 Authorization: Bearer <id_token>
 Content-Type: application/json
 anthropic-version: 2023-06-01
@@ -103,6 +105,29 @@ If the upstream response isn't parseable JSON or doesn't match Anthropic's stand
 
 **Response headers forwarded back to caller:** `content-type` only. Anthropic's `request-id`, `anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional headers be exposed, file an issue.
 
+### `GET /v1/foods/search`
+
+Proxies the request to `https://api.nal.usda.gov/fdc/v1/foods/search`. **Rate-limited** (see below).
+
+**Request:**
+
+```
+GET /v1/foods/search?query=<text>&dataType=Foundation,SR%20Legacy&pageSize=15
+Authorization: Bearer <id_token>
+```
+
+**Query params forwarded to USDA** (strict allowlist; anything else is dropped):
+
+- `query`
+- `dataType`
+- `pageSize`
+
+USDA authenticates via `api_key` **query parameter** (not a header). If the caller includes `api_key` in the query string, the proxy **drops it** and substitutes its own from Secrets Manager. Never pass through a stale or test API key.
+
+**Response (2xx):** USDA's response, byte-for-byte (status + `content-type` + body). USDA's response shape (`foods[].fdcId`, `description`, `dataType`, `foodNutrients[]…`) is unchanged.
+
+**Response (non-2xx from USDA):** Sanitized to a known envelope. USDA's 429 (over-quota) and 403 (DEMO_KEY exhausted) both map to `429 { error: "upstream_rate_limited", upstream: { type, message } }` — distinct from the proxy's own `daily_limit_exceeded` 429 (which signals the per-user proxy quota was hit). Other non-2xx pass through as `{ error: "upstream_error", upstream: { type, message } }` with USDA's status code preserved.
+
 ## Error responses
 
 All proxy-originated error responses have a JSON body of the form:
@@ -121,29 +146,32 @@ All proxy-originated error responses have a JSON body of the form:
 | 401    | `malformed`              | Token isn't a parseable JWT, or `sub` is missing                             | —                           |
 | 401    | `jwks_fetch_failed`      | Proxy couldn't fetch Apple's JWKS (transient)                                | —                           |
 | 404    | `not_found`              | Unknown route                                                                | `path`                      |
-| 405    | `method_not_allowed`     | Wrong HTTP method (e.g., `GET /v1/messages`)                                 | —                           |
-| 429    | `daily_limit_exceeded`   | User hit their daily request limit on `/v1/messages`                         | `limit`, `count`, `resetsAt` |
-| 503    | `upstream_not_configured`| Proxy's Anthropic API key isn't populated in Secrets Manager (transient)     | —                           |
-| 4xx/5xx| `upstream_error`         | Anthropic returned non-2xx; status code is forwarded from Anthropic          | `upstream` (type, message)  |
+| 405    | `method_not_allowed`     | Wrong HTTP method (e.g., `GET /v1/anthropic/messages`)                       | —                           |
+| 429    | `daily_limit_exceeded`   | User hit their daily request limit on the proxy itself                       | `scope`, `group`, `limit`, `count`, `resetsAt` |
+| 429    | `upstream_rate_limited`  | USDA returned 429 (over-quota) or 403 (DEMO_KEY exhausted)                   | `upstream` (type, message)  |
+| 503    | `upstream_not_configured`| Proxy's upstream API key isn't populated in Secrets Manager (transient)      | —                           |
+| 4xx/5xx| `upstream_error`         | Upstream returned non-2xx (other than rate-limit); status forwarded          | `upstream` (type, message)  |
 | 500    | (none)                   | Unexpected internal error; Lambda default response (not this JSON shape)     | —                           |
 
 The recommended client mapping:
 
 - **401** of any kind → re-auth via Sign in with Apple and retry once
-- **429** → respect `Retry-After`; surface `resetsAt` in UI
+- **429 `daily_limit_exceeded`** → respect `Retry-After`; surface `resetsAt` in UI; this is the proxy throttling the user
+- **429 `upstream_rate_limited`** → the upstream provider is throttling (DEMO_KEY exhaustion or genuine over-quota); back off and retry, surface as a distinct UI message from the proxy's own quota
 - **503 `upstream_not_configured`** → brief backoff and retry (transient during proxy rollout)
 - **5xx other** → standard backoff with jitter
 - **4xx other** → user-facing error, no retry
 
 ## Rate limiting
 
-`POST /v1/messages` is rate-limited per user per UTC day:
+Rate-limited endpoints are `POST /v1/anthropic/messages` (and the legacy alias `POST /v1/messages`) and `GET /v1/foods/search`. `/health` is **not** rate-limited.
 
-- **Default limit:** 100 requests per day
-- **Reset:** UTC midnight
-- **Per-user override:** set the `dailyLimit` number attribute on the user's `USER#<sub>/PROFILE` row in DynamoDB (no admin endpoint yet)
-- **Counted regardless of upstream outcome** — Anthropic errors, 5xx responses, etc. still consume quota
-- **`/health` is NOT rate-limited**
+The proxy tracks **two counters per user per UTC day**:
+
+- **Total counter** — incremented on every rate-limited request, regardless of endpoint. Enforced against `DEFAULT_DAILY_LIMIT` (currently `100/day`) unless the user's `dailyLimit` attribute overrides it.
+- **Per-endpoint-group counter** — incremented on every rate-limited request within a group (`anthropic`, `foods`). Always tracked for observability. **Enforced** only when a `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>` attribute is set (e.g., `DEFAULT_DAILY_LIMIT_FOODS=500`, `dailyLimitFoods=500`). Currently no per-group enforcement is configured; total-only is the binding limit.
+
+Counted regardless of upstream outcome — upstream errors, 5xx responses, etc. still consume quota.
 
 When exceeded:
 
@@ -154,6 +182,8 @@ Content-Type: application/json
 
 {
   "error": "daily_limit_exceeded",
+  "scope": "total",          // or "group"
+  "group": "foods",          // present iff scope == "group"
   "limit": 100,
   "count": 101,
   "resetsAt": "<ISO timestamp of next UTC midnight>"

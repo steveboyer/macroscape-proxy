@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP040** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP042** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
 
 ## Contents
 
@@ -64,6 +64,22 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP041** — Proxy USDA FoodData Central `/foods/search` via `GET /v1/foods/search`.
+
+      Same Sign in with Apple auth as the Anthropic path. New Secrets Manager entry `macroscape-proxy/usda-api-key` (created empty; populate post-deploy). `USDA_SECRET_ARN` env var added. New `src/upstream/usda.ts` exports `proxyFoodsSearch(queryParams, requestId)`: strict allowlist of caller query params (`query`, `dataType`, `pageSize`); caller-provided `api_key` is dropped defensively; proxy injects its own. Response forwarded byte-for-byte on 2xx (USDA's `foods[].fdcId` / `description` / `dataType` / `foodNutrients[]` shape unchanged for the iOS decoder). USDA 429 (over-quota) and 403 (DEMO_KEY exhausted) both map to `429 { error: "upstream_rate_limited", upstream: { type, message } }` — distinct from the proxy's `daily_limit_exceeded`, so iOS preserves its `SearchError.rateLimited` UI distinction. Other USDA non-2xx pass through as `upstream_error` with sanitized envelope (USDA's `{ error: { code, message } }` and `{ error: "STRING" }` shapes both handled). Per-user daily rate limit applies (group `foods`).
+
+      `UpstreamError` extracted to `src/upstream/errors.ts` and re-exported from `anthropic.ts` for backward compat; `usda.ts` imports it from the new location.
+
+      **Post-deploy:** populate `macroscape-proxy/usda-api-key` with a real USDA FoodData Central API key (register at api.data.gov). Default quota is 1000 req/hour shared across all proxy users — proxy's per-user daily limit (100/day default total) keeps any single user from monopolizing it.
+
+- [x] **MSP040** — Rename `/v1/messages` → `/v1/anthropic/messages` with transitional alias; per-endpoint rate-limit counters.
+
+      Routing: `/v1/messages` and `/v1/anthropic/messages` both dispatch to the same handler, so iOS can flip the URL constant on its own timeline. Both report `group: "anthropic"` to the rate limiter. CONTRACT.md marks `/v1/messages` legacy with a target removal window (no earlier than 90 days after iOS confirms cutover).
+
+      Rate-limit refactor in `src/rateLimit/dailyLimit.ts`: now tracks **two counters** per request — a per-user **total** (existing `USAGE#<sub>/DATE#YYYY-MM-DD`) and a per-user **per-endpoint-group** counter (`USAGE-<group>#<sub>/DATE#YYYY-MM-DD`). Group is set explicitly per handler (`anthropic`, `foods`; future: `openai`). Total is always enforced against `DEFAULT_DAILY_LIMIT`. Per-group is **always tracked** (observability) and enforced only when `DEFAULT_DAILY_LIMIT_<GROUP>` env var or user's `dailyLimit<Group>` attribute is set — no per-group enforcement currently configured. `RateLimitError` carries `scope` (`"total"` | `"group"`) and `group` (string | null); 429 body adds those fields so iOS can distinguish "you've hit your total quota" from "you've hit your foods quota" without changing the existing fields.
+
+      Existing `USAGE#<sub>` data preserved unchanged (the rename only adds the parallel `USAGE-<group>#<sub>` rows). No migration needed.
 
 - [x] **MSP037** — Don't populate `macroscape-proxy/upstream-api-key` until handler-side auth is in place.
 
