@@ -28,10 +28,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Forwarding
 
-- [ ] **MSP013** — `/v1/messages` POST handler that proxies to `https://api.anthropic.com/v1/messages`. Body passed through unchanged.
-
-- [ ] **MSP014** — Header rewriting: strip the caller's Authorization header, attach the Anthropic API key from Secrets Manager, preserve content-type and other Anthropic-required headers (e.g., `anthropic-version`, `anthropic-beta` for prompt caching).
-
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
 
 - [ ] **MSP016** — Sanitized upstream error pass-through. Forward Anthropic's status codes and a safe subset of error details, never the full upstream response (which may contain implementation details we don't want to leak).
@@ -85,6 +81,12 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP013 + MSP014** — `/v1/messages` POST proxy to `https://api.anthropic.com/v1/messages` with header rewriting.
+
+      Auth-gated POST route. New `src/upstream/anthropic.ts` fetches the Anthropic key from `macroscape-proxy/upstream-api-key` via `@aws-sdk/client-secrets-manager`, caches it module-scope (warm-start reuse; cache invalidates with container recycling — fine until secret rotation is routine). Header policy is a **strict allowlist** (`content-type`, `anthropic-version`, `anthropic-beta`, `accept`, `accept-encoding`) — anything else from the caller is dropped, and the caller's `Authorization` (Apple JWT) never leaves the proxy. Outbound headers add `x-api-key: <secret>` and force `content-type: application/json`. Body is passed through unchanged (with base64-decode if the caller flagged `isBase64Encoded`). Response forwards Anthropic's status + content-type + body; other upstream headers are dropped pending MSP016. Empty secret returns `503 upstream_not_configured` (until the secret is populated post-deploy). Non-POST methods return `405 method_not_allowed`. Auth lifted out of the handler into `src/auth/authenticate.ts` (`AuthError` with `statusCode` + `reason`) so both `/health` and `/v1/messages` share one path. Streaming and error sanitization are still deferred to MSP015 and MSP016.
+
+      **Post-deploy:** populate `macroscape-proxy/upstream-api-key` with the Anthropic API key — until then, every `/v1/messages` call returns 503.
 
 - [x] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent: subsequent requests look up rather than recreate.
 
