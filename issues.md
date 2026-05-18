@@ -32,10 +32,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Observability and security
 
-- [ ] **MSP019** — Structured CloudWatch logging with secret redaction. JSON log shape: `requestId`, `userId`, `route`, `latencyMs`, `upstreamStatus`. Anthropic API key and Apple private key never appear in logs (assert via lint rule or test).
-
-- [ ] **MSP020** — Request ID propagation. Generate or accept an inbound request ID header, attach it to every log line and to the upstream Anthropic call.
-
 - [ ] **MSP021** — IAM least-privilege audit on the Lambda execution role. Limit to specific DynamoDB table ARN, specific Secrets Manager secret ARNs, and CloudWatch Logs only.
 
 ### Testing
@@ -73,6 +69,12 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP019 + MSP020** — Structured CloudWatch logging + request ID propagation.
+
+      New `src/logging/logger.ts` exports `createRequestLogger(event)` which captures request-scoped context (`requestId`, `lambdaRequestId`, `route`, `method`) at construction time, exposes setters for `userId` / `upstreamStatus` / `error`, and emits a single JSON log line per request via `console.log` (CloudWatch captures stdout). The top-level `handler` wraps `dispatch` so the final log line — including `statusCode` + `latencyMs` — fires for every request, even unhandled exceptions (logged with `error: "unhandled"` then rethrown so Lambda returns 500). Route handlers set `userId` after `authenticate`, `upstreamStatus` after `proxyMessages`; `errorResponse` sets `error` for `AuthError` / `RateLimitError` / `UpstreamError` so the reason lands in the log.
+
+      Request ID: caller's `x-request-id` is accepted (validated against `^[A-Za-z0-9_-]{1,200}$` to prevent log-line injection) or a UUID is generated. The same ID is attached as `x-request-id` on the outbound Anthropic call, so iOS → proxy → Anthropic correlation works end-to-end. CONTRACT.md updated to document the propagation. Secret redaction is verified-by-construction: nothing logs request/response bodies, the Anthropic `x-api-key` only appears in outbound headers (never logged), the Apple JWT only appears in inbound headers (never logged), and the Apple `.p8` private key isn't loaded at all (auth path is JWKS-only). A runtime assert or lint rule was deferred until tests exist (MSP022).
 
 - [x] **MSP016** — Sanitized upstream error pass-through.
 

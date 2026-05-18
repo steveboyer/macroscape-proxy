@@ -39,12 +39,14 @@ export async function proxyMessages(
   callerHeaders: Record<string, string | undefined>,
   callerBody: string | undefined,
   isBase64Encoded: boolean,
+  requestId: string,
 ): Promise<ProxyResponse> {
   const apiKey = await getUpstreamApiKey();
 
   const outboundHeaders: Record<string, string> = {
     'x-api-key': apiKey,
     'content-type': 'application/json',
+    'x-request-id': requestId,
   };
   for (const [name, value] of Object.entries(callerHeaders)) {
     if (value === undefined) continue;

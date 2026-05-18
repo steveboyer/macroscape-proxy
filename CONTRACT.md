@@ -83,6 +83,8 @@ The caller's `Authorization` header (the Apple id_token) is **dropped** before f
 - `accept`
 - `accept-encoding`
 
+**Request ID propagation:** The client may include an `x-request-id` header (alphanumeric + `-`/`_`, max 200 chars) to correlate iOS-side and proxy-side logs. If absent or invalid, the proxy generates a UUID. Either way, the same ID is attached to the outbound request to Anthropic as `x-request-id`, and surfaces in every proxy CloudWatch log line for the request.
+
 **Response (2xx):** Anthropic's response, byte-for-byte. Prompt-cache hit/miss is visible in `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens` in the body.
 
 **Response (non-2xx from Anthropic):** Anthropic's status code is preserved; the body is **sanitized** into a known envelope to prevent upstream implementation details (request IDs, internal codes, stack traces) from leaking:
