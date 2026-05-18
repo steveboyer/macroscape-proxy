@@ -35,8 +35,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Documentation
 
-- [ ] **MSP024** — README covering architecture overview, local dev setup, AWS prerequisites, deploy steps, and how to rotate the Anthropic key.
-
 - [ ] **MSP025** — Mermaid architecture diagram in README showing iOS app, API Gateway, Lambda, DynamoDB, Secrets Manager, and Anthropic upstream.
 
 ---
@@ -62,6 +60,12 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP024** — README covering architecture overview, local dev setup, AWS prerequisites, deploy steps, and how to rotate an upstream API key.
+
+      Replaced the 31-line stub with a sectioned README. Architecture section gives the iOS → APIGW → Lambda → upstreams flow (ASCII; the Mermaid version is MSP025) plus a stack summary of `MacroScapeProxyStack` + `MacroScapeProxyGithubOidcStack` and a route table covering `/health`, `/v1/anthropic/messages` (+ `/v1/messages` legacy alias), `/v1/usda/foods/search` (+ `/v1/foods/search` legacy alias). Local dev mirrors the commands in CLAUDE.md and notes there's no `sam local` workflow yet (MSP008). AWS prerequisites covers the three first-time setup steps: `cdk bootstrap`, one-time OIDC stack deploy, registrar NS delegation for `macroscape.app`. Deploy section documents both CI/CD (`.github/workflows/deploy.yml` via OIDC, serialized via `concurrency: deploy`) and manual `cdk diff` / `cdk deploy`, with a table of the three Secrets Manager entries to populate post-deploy. Rotation section explains the warm-container caching behavior and shows `aws secretsmanager put-secret-value` plus the env-var-bump trick to force immediate rollout (vs waiting for warm containers to recycle). Pointers to `CONTRACT.md` (HTTP contract), `issues.md` (backlog), and `docs/` (operator setup) up top.
+
+      Corrected stale facts from the old README: Node runtime is 22 (not 20), status is no longer "pre-implementation", upstreams include USDA not just Anthropic, Secrets Manager has three entries not two.
 
 - [x] **MSP009** — Apple Developer Sign-In configuration: Services ID, Key, Team ID; document and populate the private-key secret.
 
