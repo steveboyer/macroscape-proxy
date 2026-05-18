@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Backlog: see issues.md (single source of truth for what's done, in progress, and planned).
 
+API contract lives in CONTRACT.md in this repo.
+
 ## Project
 
-AWS Lambda proxy for the MacroScape iOS app. Authenticates Apple Sign-In users and forwards `/v1/messages` requests to the Anthropic API, with per-user rate limiting and centralized API key handling. Pre-implementation — `src/handler.ts` is still a placeholder echo handler.
+AWS Lambda proxy for the MacroScape iOS app, served at `https://api.macroscape.app`. Authenticates Sign in with Apple callers (id_token in `Authorization: Bearer`), auto-creates a user record on first authenticated request, enforces a per-user daily rate limit on `/v1/messages`, and forwards those requests to the Anthropic API with a strict header allowlist and centralized API key handling.
 
 ## Commands
 
