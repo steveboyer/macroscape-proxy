@@ -85,7 +85,19 @@ The caller's `Authorization` header (the Apple id_token) is **dropped** before f
 
 **Response (2xx):** Anthropic's response, byte-for-byte. Prompt-cache hit/miss is visible in `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens` in the body.
 
-**Response (non-2xx from Anthropic):** currently forwarded verbatim. Will be sanitized in a future change to drop upstream implementation details.
+**Response (non-2xx from Anthropic):** Anthropic's status code is preserved; the body is **sanitized** into a known envelope to prevent upstream implementation details (request IDs, internal codes, stack traces) from leaking:
+
+```json
+{
+  "error": "upstream_error",
+  "upstream": {
+    "type": "<Anthropic error type, e.g. invalid_request_error, rate_limit_error, overloaded_error, api_error>",
+    "message": "<Anthropic's human-readable error message>"
+  }
+}
+```
+
+If the upstream response isn't parseable JSON or doesn't match Anthropic's standard `{ error: { type, message } }` shape, `upstream.type` falls back to `"unknown"` with a generic message. The status code is still forwarded as-is.
 
 **Response headers forwarded back to caller:** `content-type` only. Anthropic's `request-id`, `anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional headers be exposed, file an issue.
 
@@ -110,9 +122,8 @@ All proxy-originated error responses have a JSON body of the form:
 | 405    | `method_not_allowed`     | Wrong HTTP method (e.g., `GET /v1/messages`)                                 | —                           |
 | 429    | `daily_limit_exceeded`   | User hit their daily request limit on `/v1/messages`                         | `limit`, `count`, `resetsAt` |
 | 503    | `upstream_not_configured`| Proxy's Anthropic API key isn't populated in Secrets Manager (transient)     | —                           |
+| 4xx/5xx| `upstream_error`         | Anthropic returned non-2xx; status code is forwarded from Anthropic          | `upstream` (type, message)  |
 | 500    | (none)                   | Unexpected internal error; Lambda default response (not this JSON shape)     | —                           |
-
-**Non-2xx responses from Anthropic** are currently forwarded as-is and do **not** use this schema.
 
 The recommended client mapping:
 
@@ -154,5 +165,4 @@ The client gets both the header (per RFC 7231) and the body fields (for UI). Use
 These are tracked in `issues.md` and will land in future releases. Clients should be prepared for them to change:
 
 - **Streaming responses** (`stream: true` in Anthropic body) — proxy currently buffers the full response and may not handle Anthropic SSE chunked transfer correctly. If your client needs streaming, file an issue before depending on `/v1/messages` for streaming calls.
-- **Sanitized upstream errors** — Anthropic non-2xx responses currently pass through verbatim, potentially leaking upstream implementation details. Will be replaced with a sanitized subset.
 - **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy to add when requested.

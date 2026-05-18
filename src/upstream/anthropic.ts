@@ -67,17 +67,64 @@ export async function proxyMessages(
     body,
   });
 
-  const responseBody = await response.text();
-  const responseHeaders: Record<string, string> = {};
-  const upstreamContentType = response.headers.get('content-type');
-  if (upstreamContentType) {
-    responseHeaders['content-type'] = upstreamContentType;
+  const rawBody = await response.text();
+  const isSuccess = response.status >= 200 && response.status < 300;
+
+  if (isSuccess) {
+    const responseHeaders: Record<string, string> = {};
+    const upstreamContentType = response.headers.get('content-type');
+    if (upstreamContentType) {
+      responseHeaders['content-type'] = upstreamContentType;
+    }
+    return {
+      statusCode: response.status,
+      headers: responseHeaders,
+      body: rawBody,
+    };
   }
 
+  // Non-2xx — sanitize to a known envelope so upstream implementation
+  // details (request IDs, internal codes, stack traces) can't leak.
   return {
     statusCode: response.status,
-    headers: responseHeaders,
-    body: responseBody,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(sanitizeUpstreamError(rawBody)),
+  };
+}
+
+interface SanitizedUpstreamError {
+  error: 'upstream_error';
+  upstream: {
+    type: string;
+    message: string;
+  };
+}
+
+function sanitizeUpstreamError(rawBody: string): SanitizedUpstreamError {
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+      const err = (parsed as { error: unknown }).error;
+      if (err && typeof err === 'object') {
+        const e = err as { type?: unknown; message?: unknown };
+        return {
+          error: 'upstream_error',
+          upstream: {
+            type: typeof e.type === 'string' ? e.type : 'unknown',
+            message: typeof e.message === 'string' ? e.message : '',
+          },
+        };
+      }
+    }
+  } catch {
+    // Fall through.
+  }
+  return {
+    error: 'upstream_error',
+    upstream: {
+      type: 'unknown',
+      message: 'Upstream returned a non-JSON or unexpected error response',
+    },
   };
 }
 

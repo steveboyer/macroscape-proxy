@@ -30,10 +30,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
 
-- [ ] **MSP016** — Sanitized upstream error pass-through. Forward Anthropic's status codes and a safe subset of error details, never the full upstream response (which may contain implementation details we don't want to leak).
-
-### Rate limiting
-
 ### Observability and security
 
 - [ ] **MSP019** — Structured CloudWatch logging with secret redaction. JSON log shape: `requestId`, `userId`, `route`, `latencyMs`, `upstreamStatus`. Anthropic API key and Apple private key never appear in logs (assert via lint rule or test).
@@ -77,6 +73,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP016** — Sanitized upstream error pass-through.
+
+      Non-2xx responses from Anthropic are now wrapped in a known envelope so upstream implementation details (request IDs, internal codes, stack traces) can't leak through. `src/upstream/anthropic.ts` branches on `response.status`: 2xx falls through unchanged (existing behavior preserved); non-2xx parses the body as JSON, extracts `error.type` + `error.message` from Anthropic's standard error shape, and returns `{ error: "upstream_error", upstream: { type, message } }` with the original status code preserved. Anything unparseable or shape-mismatched falls back to `type: "unknown"` + a generic message. CONTRACT.md updated with the new envelope and a row in the error table. No new dependencies.
 
 - [x] **MSP017 + MSP018** — Per-user daily rate limit on `/v1/messages` with 429 + `Retry-After`.
 
