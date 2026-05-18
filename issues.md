@@ -20,8 +20,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 - [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass, disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this load-bearing.
 
-- [ ] **MSP037** — Don't populate the `macroscape-proxy/upstream-api-key` secret in production until handler-side auth (MSP010–MSP012) is in place. The `HttpApi` `/{proxy+}` route is currently unauthenticated and public; that's harmless while the handler just echoes JSON, but the moment the secret is populated and the handler reads it, the open endpoint becomes a wallet-drain vector against Anthropic.
-
 ### Auth
 
 - [ ] **MSP009** — Apple Developer Sign-In configuration: services ID, key, team ID. Document the values needed in README and store the private key in Secrets Manager (MSP005).
@@ -31,8 +29,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
 
 ### Observability and security
-
-- [ ] **MSP021** — IAM least-privilege audit on the Lambda execution role. Limit to specific DynamoDB table ARN, specific Secrets Manager secret ARNs, and CloudWatch Logs only.
 
 ### Testing
 
@@ -68,6 +64,14 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP037** — Don't populate `macroscape-proxy/upstream-api-key` until handler-side auth is in place.
+
+      Satisfied: auth gate (MSP010 + MSP012, Apple JWT verification on every `/v1/messages` call) plus per-user daily rate limit (MSP017 + MSP018) together close the wallet-drain vector this item was guarding against. Pre-auth, an unauthenticated caller couldn't drain the secret because the secret was empty; post-auth, only users with a valid Apple Sign-In id_token can reach the proxy, and each is capped at the per-user daily limit (default 100/day, override per user). The remaining residual risk — rogue authenticated user burning their own quota — is bounded by the limit and visible via the per-`userId` CloudWatch logs from MSP019. Secret population is now safe to do (and required for `/v1/messages` to function).
+
+- [x] **MSP021** — IAM least-privilege audit on the Lambda execution role.
+
+      Before: `table.grantReadWriteData(handler)` granted 12 DynamoDB actions (BatchGetItem, BatchWriteItem, ConditionCheckItem, DeleteItem, DescribeTable, GetItem, GetRecords, GetShardIterator, PutItem, Query, Scan, UpdateItem); `secret.grantRead(handler)` granted GetSecretValue + DescribeSecret. After: `table.grant(handler, 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem')` (exactly the three actions `src/db` + `src/rateLimit` issue) and an explicit `iam.PolicyStatement` granting only `secretsmanager:GetSecretValue` on the two secret ARNs. Resource scoping was already tight pre-audit (specific table ARN, specific secret ARNs, no wildcards). CloudWatch Logs grants are already minimal via the explicit `LogGroup` pattern (`logs:CreateLogStream` + `logs:PutLogEvents` on the LogGroup ARN). Verified by `cdk synth` diff of `ProxyHandlerServiceRoleDefaultPolicy`.
 
 - [x] **MSP022** — Unit tests for Apple ID token verification using fixture JWTs.
 

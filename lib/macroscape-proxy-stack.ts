@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -71,9 +72,20 @@ export class MacroScapeProxyStack extends cdk.Stack {
       },
     });
 
-    table.grantReadWriteData(handler);
-    upstreamApiKey.grantRead(handler);
-    appleSignInPrivateKey.grantRead(handler);
+    // Least-privilege: only the DynamoDB actions src/db + src/rateLimit
+    // actually issue (GetItem for the user record, PutItem for upsertUser,
+    // UpdateItem for the atomic usage counter). Add more here if a future
+    // module needs Query/Scan/Delete.
+    table.grant(handler, 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem');
+
+    // Least-privilege: GetSecretValue only — the proxy reads the secret
+    // value at request time and never needs metadata (DescribeSecret).
+    handler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [upstreamApiKey.secretArn, appleSignInPrivateKey.secretArn],
+      }),
+    );
 
     // Hosted zone for the apex. RETAIN keeps it (and the registrar NS
     // delegation) intact across stack tear-downs. On a re-create after
