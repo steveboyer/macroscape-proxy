@@ -36,7 +36,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Testing
 
-- [ ] **MSP022** — Unit tests for Apple ID token verification using fixture JWTs (valid, expired, wrong issuer, wrong audience, malformed).
 
 - [ ] **MSP023** — Integration test for `/v1/messages` happy path with a mocked Anthropic upstream and a mocked Apple JWKS.
 
@@ -69,6 +68,16 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP022** — Unit tests for Apple ID token verification using fixture JWTs.
+
+      First test framework in the repo: `vitest` (single dev-dep, native TS, fast, Jest-compatible API). `npm test` / `npm run test:watch`; `npm test` added as a step to `.github/workflows/ci.yml` (between `tsc --noEmit` and `cdk synth`). `vitest.config.ts` scopes runs to `test/**/*.test.ts`.
+
+      To avoid mocking `jose` or adding test-only branches in production code, refactored `verifyAppleIdToken(token)` → `verifyAppleIdToken(token, jwks?)` with a default of the existing `createRemoteJWKSet(APPLE_JWKS_URL)`. Tests pass their own `createLocalJWKSet` over a freshly-generated RSA keypair, so the production code path is exercised end-to-end (jose's `jwtVerify`, the error-mapping branch, the env-var check) — only the network call is swapped.
+
+      `test/appleVerifier.test.ts` covers nine cases: valid (returns `sub`/`iss`/`aud`), expired, wrong `iss`, wrong `aud`, untrusted signing key (kid in JWKS, signature fails → `invalid_signature`), unknown kid (kid not in JWKS → `jwks_fetch_failed`), non-JWT string (`malformed`), missing `sub` (`malformed`), missing `APPLE_AUD` env var (plain `Error`, not `AppleTokenError`).
+
+      MSP019's deferred secret-redaction assertion still pending — would land here naturally as a tenth test that drives a real request and greps the log output for the secret pattern, but requires a more invasive logger mock; deferred to MSP023 (integration test).
 
 - [x] **MSP019 + MSP020** — Structured CloudWatch logging + request ID propagation.
 

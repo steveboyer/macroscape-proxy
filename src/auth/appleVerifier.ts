@@ -4,9 +4,11 @@ import type { JWTPayload } from 'jose';
 const APPLE_ISSUER = 'https://appleid.apple.com';
 const APPLE_JWKS_URL = new URL('https://appleid.apple.com/auth/keys');
 
+type JwksResolver = ReturnType<typeof createRemoteJWKSet>;
+
 // Module-scope singleton — survives Lambda warm starts so warm invocations
 // reuse the cached JWKS instead of re-fetching from Apple each time.
-const jwks = createRemoteJWKSet(APPLE_JWKS_URL);
+const defaultJwks: JwksResolver = createRemoteJWKSet(APPLE_JWKS_URL);
 
 export interface AppleClaims extends JWTPayload {
   sub: string;
@@ -34,7 +36,10 @@ export class AppleTokenError extends Error {
   }
 }
 
-export async function verifyAppleIdToken(token: string): Promise<AppleClaims> {
+export async function verifyAppleIdToken(
+  token: string,
+  jwks: JwksResolver = defaultJwks,
+): Promise<AppleClaims> {
   const aud = process.env.APPLE_AUD;
   if (!aud) {
     throw new Error('APPLE_AUD env var is required');
