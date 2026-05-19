@@ -30,8 +30,6 @@ The upstream provider is visible in the URL on purpose. This:
 
 Routes that don't forward to a third-party upstream don't follow this pattern — currently only `/health`.
 
-Legacy unprefixed paths (`/v1/messages`, `/v1/foods/search`) exist as transitional aliases and are scheduled for removal — see the individual endpoint sections.
-
 ## Authentication
 
 All endpoints require **Sign in with Apple**. The client sends Apple's id_token in every request:
@@ -81,11 +79,9 @@ Authorization: Bearer <id_token>
 
 `created: true` on the user's first `/health`; `false` on subsequent calls.
 
-### `POST /v1/anthropic/messages` (and legacy alias `POST /v1/messages`)
+### `POST /v1/anthropic/messages`
 
 Proxies the request to `https://api.anthropic.com/v1/messages`. Body is forwarded **unchanged**. Response status + `content-type` + body are forwarded back unchanged. **Rate-limited** (see below).
-
-`/v1/messages` is a legacy alias — same handler, same behavior. Use `/v1/anthropic/messages` in new code. The flat `/v1/messages` path will be removed in a future release once the iOS client has cut over (target window: at least 90 days after iOS confirms cutover).
 
 **Request:**
 
@@ -129,11 +125,9 @@ If the upstream response isn't parseable JSON or doesn't match Anthropic's stand
 
 **Response headers forwarded back to caller:** `content-type` only. Anthropic's `request-id`, `anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional headers be exposed, file an issue.
 
-### `GET /v1/usda/foods/search` (and legacy alias `GET /v1/foods/search`)
+### `GET /v1/usda/foods/search`
 
 Proxies the request to `https://api.nal.usda.gov/fdc/v1/foods/search`. **Rate-limited** (see below).
-
-`/v1/foods/search` is a legacy alias — same handler, same behavior. Use `/v1/usda/foods/search` in new code. The flat `/v1/foods/search` path will be removed in a future release once the iOS client has cut over (target window: at least 90 days after iOS confirms cutover).
 
 **Request:**
 
@@ -190,7 +184,7 @@ The recommended client mapping:
 
 ## Rate limiting
 
-Rate-limited endpoints are `POST /v1/anthropic/messages` (and the legacy alias `POST /v1/messages`) and `GET /v1/usda/foods/search` (and the legacy alias `GET /v1/foods/search`). `/health` is **not** rate-limited.
+Rate-limited endpoints are `POST /v1/anthropic/messages` and `GET /v1/usda/foods/search`. `/health` is **not** rate-limited.
 
 The proxy tracks **two counters per user per UTC day**:
 

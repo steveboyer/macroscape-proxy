@@ -36,13 +36,11 @@ Two CDK stacks in `bin/macroscape-proxy.ts`:
 
 The Lambda source lives in `src/`; CDK infrastructure code lives in `bin/` + `lib/`. The two are kept independent — Lambda is compiled with `tsc` and bundled by esbuild for deployment; CDK runs via `ts-node`. Routes:
 
-| Route                              | Notes                                            |
-| ---------------------------------- | ------------------------------------------------ |
-| `GET /health`                      | Auth-gated; returns the verified Apple `sub`.    |
-| `POST /v1/anthropic/messages`      | Forwards to `api.anthropic.com/v1/messages`.     |
-| `POST /v1/messages`                | Legacy alias for `/v1/anthropic/messages`.       |
-| `GET /v1/usda/foods/search`        | Forwards to USDA FoodData Central `/foods/search`. |
-| `GET /v1/foods/search`             | Legacy alias for `/v1/usda/foods/search`.        |
+| Route                         | Notes                                              |
+| ----------------------------- | -------------------------------------------------- |
+| `GET /health`                 | Auth-gated; returns the verified Apple `sub`.      |
+| `POST /v1/anthropic/messages` | Forwards to `api.anthropic.com/v1/messages`.       |
+| `GET /v1/usda/foods/search`   | Forwards to USDA FoodData Central `/foods/search`. |
 
 See `CONTRACT.md` for request/response shapes, error envelopes, and rate-limit semantics.
 

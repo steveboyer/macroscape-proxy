@@ -2,7 +2,7 @@
 
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP043** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP044** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
 
 ## Contents
 
@@ -57,6 +57,14 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP043** — Remove the transitional `/v1/messages` and `/v1/foods/search` legacy aliases.
+
+      Routing in `src/handler.ts` now matches only the canonical `/v1/anthropic/messages` and `/v1/usda/foods/search`; the old flat paths return 404 like any unknown route. CONTRACT.md drops the alias notes from the URL conventions section, both endpoint headings (and their "legacy alias" paragraphs), and the rate-limit section. README's route table drops the two alias rows. CLAUDE.md gets three stale `/v1/messages`-only references corrected to mention both upstream routes (the project description, the architecture bullet, and the `src/handler.ts` layout note).
+
+      Historical Done entries in this file (MSP013/14, MSP017/18, MSP040, MSP041) keep their original `/v1/messages` and `/v1/foods/search` text — those are accurate accounts of what the path was at the time of that work. Upstream URLs (`api.anthropic.com/v1/messages`, `api.nal.usda.gov/fdc/v1/foods/search`) and the integration test's upstream-URL assertion are unchanged — different URL.
+
+      Per-MSP040/042 plan, iOS confirmed cutover ahead of the 90-day window. Callers still using the legacy paths now get `404 { error: "not_found", path: "..." }`.
 
 - [x] **MSP023** — Integration test for `/v1/anthropic/messages` with mocked upstream + JWKS.
 

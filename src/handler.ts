@@ -35,12 +35,11 @@ async function dispatch(
   if (path === '/health') {
     return handleHealth(event, logger);
   }
-  // Provider-prefixed `/v1/<upstream>/<endpoint>` is canonical; flat paths
-  // are legacy aliases scheduled for removal once iOS confirms cutover.
-  if (path === '/v1/anthropic/messages' || path === '/v1/messages') {
+  // Routes follow the `/v1/<upstream>/<endpoint>` convention (see CONTRACT.md).
+  if (path === '/v1/anthropic/messages') {
     return handleAnthropic(event, logger);
   }
-  if (path === '/v1/usda/foods/search' || path === '/v1/foods/search') {
+  if (path === '/v1/usda/foods/search') {
     return handleFoodsSearch(event, logger);
   }
   return jsonResponse(404, { error: 'not_found', path });
