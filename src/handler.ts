@@ -133,6 +133,8 @@ function errorResponse(err: unknown, logger: RequestLogger): APIGatewayProxyStru
     logger.setError(err.reason);
     return jsonResponse(err.statusCode, { error: err.reason });
   }
+  // Unknown error — propagate so the top-level wrapper logs it as
+  // `error: "unhandled"` and Lambda returns 500 (with the stack in CW logs).
   throw err;
 }
 

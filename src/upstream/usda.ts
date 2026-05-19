@@ -4,9 +4,10 @@ import type { ProxyResponse } from './anthropic';
 
 const USDA_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
 
-// Query params forwarded verbatim from the caller. Anything else is
-// dropped (defensively excluding `api_key` even if the caller sends one —
-// the proxy injects its own key after this filter).
+// USDA authenticates via `api_key` as a *query parameter* (not a header
+// like Anthropic's `x-api-key`). Allowlist the user-facing params; the
+// proxy strips any caller-provided `api_key` and substitutes its own
+// after this filter.
 const FORWARDED_QUERY_PARAMS = new Set(['query', 'dataType', 'pageSize']);
 
 // Module-scope singleton. Cache invalidates with container recycling.

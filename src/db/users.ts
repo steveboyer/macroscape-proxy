@@ -7,6 +7,10 @@ export interface UpsertUserResult {
   created: boolean;
 }
 
+// Atomic upsert-or-noop. The conditional PutItem inserts only when no row
+// exists for this user; on subsequent calls DynamoDB rejects the write with
+// ConditionalCheckFailedException, which we treat as `created: false`. This
+// avoids the read-then-write race a check-and-insert pattern would have.
 export async function upsertUser(appleUserId: string): Promise<UpsertUserResult> {
   try {
     await client.send(

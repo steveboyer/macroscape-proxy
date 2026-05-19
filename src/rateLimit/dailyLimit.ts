@@ -48,6 +48,9 @@ export async function checkAndIncrement(appleUserId: string, group: string): Pro
   const limits = await getUserLimits(appleUserId, group);
   const now = new Date();
 
+  // Rejected requests still bump the counter (no rollback). Intentional —
+  // for the rest of the day the user was over the limit anyway, and a
+  // rollback would add a second round-trip + race window for no benefit.
   const totalCount = await incrementTotal(appleUserId, now);
   if (totalCount > limits.totalLimit) {
     throw new RateLimitError('total', null, totalCount, limits.totalLimit, now);
