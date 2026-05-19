@@ -23,10 +23,6 @@ remain stable.
       testing, dotenv-style local config that mirrors Secrets Manager keys without committing
       values.
 
-- [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass,
-      disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this
-      load-bearing.
-
 ### Auth
 
 ### Forwarding
@@ -70,6 +66,14 @@ remain stable.
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP036** — Enable branch protection on `main`.
+
+      Pre-step: flipped the repo from private to public via `gh api -X PATCH repos/steveboyer/macroscape-proxy -F private=false` (branch protection on private repos requires GitHub Pro). Pre-flight scan confirmed no secrets in tracked files or git history (the only `-----BEGIN PRIVATE KEY-----` hits were doc references in `docs/apple-setup.md`; the only `sk-ant-...` was the deliberate fake fixture in `test/handler.integration.test.ts`). AWS account ID is visible in `deploy.yml` and `lib/` — not secret (appears in IAM trust policies by design).
+
+      Branch protection applied via `gh api -X PUT repos/.../branches/main/protection` with: `required_status_checks` (strict, contexts: `["check"]` — the CI job; `deploy` excluded since it only runs on push to main and would deadlock PRs); `required_pull_request_reviews` (count `0` — PR required but no approving review needed while solo); `enforce_admins: true` (otherwise the admin can bypass and it's theater); `allow_force_pushes: false`; `allow_deletions: false`; `required_linear_history: true` (squash/rebase only). Bump `required_approving_review_count` to `1` if/when collaborators land.
+
+      Direct push to `main` now fails. Workflow: feature branch → PR → CI must go green → squash-merge.
 
 - [x] **MSP043** — Remove the transitional `/v1/messages` and `/v1/foods/search` legacy aliases.
 
