@@ -35,8 +35,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Documentation
 
-- [ ] **MSP025** — Mermaid architecture diagram in README showing iOS app, API Gateway, Lambda, DynamoDB, Secrets Manager, and Anthropic upstream.
-
 ---
 
 ## Future / longer-term
@@ -60,6 +58,10 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP025** — Mermaid architecture diagram in README.
+
+      Replaced the ASCII flow MSP024 left as a placeholder with a Mermaid `flowchart LR`: iOS on the left, AWS subgraph in the middle (APIGW → Lambda + DynamoDB + Secrets Manager), and the three external services on the right (Apple JWKS, Anthropic, USDA). Labeled edges call out the Bearer id_token, JWKS verification, `GetSecretValue`, and the two upstream auth mechanisms (`x-api-key` for Anthropic, `api_key=…` query param for USDA). GitHub renders Mermaid natively in markdown, so the diagram is visible in the browser without external tooling.
 
 - [x] **MSP024** — README covering architecture overview, local dev setup, AWS prerequisites, deploy steps, and how to rotate an upstream API key.
 

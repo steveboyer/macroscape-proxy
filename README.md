@@ -8,11 +8,28 @@ The HTTP contract for callers lives in [`CONTRACT.md`](./CONTRACT.md); the backl
 
 ## Architecture
 
-```
-iOS app ──(Apple id_token)──> API Gateway HTTP API ──> Lambda ──> Anthropic / USDA
-                                  api.macroscape.app        │
-                                                            ├──> DynamoDB (users, daily counters)
-                                                            └──> Secrets Manager (upstream API keys)
+```mermaid
+flowchart LR
+    iOS["iOS app<br/>(MacroScape)"]
+
+    subgraph AWS["AWS · us-west-2"]
+        APIGW["API Gateway<br/>api.macroscape.app"]
+        Lambda["Lambda<br/>handler"]
+        DDB[("DynamoDB<br/>users · daily counters")]
+        Secrets[("Secrets Manager<br/>upstream API keys")]
+    end
+
+    Apple["Apple JWKS<br/>appleid.apple.com"]
+    Anthropic["Anthropic<br/>api.anthropic.com"]
+    USDA["USDA FDC<br/>api.nal.usda.gov"]
+
+    iOS -- "Bearer id_token" --> APIGW
+    APIGW --> Lambda
+    Lambda -- "verify JWKS<br/>(cached)" --> Apple
+    Lambda <--> DDB
+    Lambda -- "GetSecretValue" --> Secrets
+    Lambda -- "x-api-key" --> Anthropic
+    Lambda -- "api_key=…" --> USDA
 ```
 
 Two CDK stacks in `bin/macroscape-proxy.ts`:
