@@ -31,7 +31,6 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ### Testing
 
 
-- [ ] **MSP023** — Integration test for `/v1/messages` happy path with a mocked Anthropic upstream and a mocked Apple JWKS.
 
 ### Documentation
 
@@ -58,6 +57,16 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP023** — Integration test for `/v1/anthropic/messages` with mocked upstream + JWKS.
+
+      `test/handler.integration.test.ts` drives `handler` directly with a synthesized `APIGatewayProxyEventV2` and mocks three layers: (1) global `fetch` URL-routed to return our test JWKS for `appleid.apple.com` and configurable Anthropic responses for `api.anthropic.com`; (2) `DynamoDBDocumentClient` via `aws-sdk-client-mock` (new dev dep) intercepting `GetCommand` / `PutCommand` / `UpdateCommand`; (3) `SecretsManagerClient` same library for the upstream API key. Apple JWTs are freshly signed per test with the `jose`-generated RSA keypair from MSP022's pattern (no real Apple traffic).
+
+      Four cases: happy path (forwards to Anthropic, returns response byte-for-byte, asserts request shape — `x-api-key` injected, caller `Authorization` dropped, header allowlist enforced, `x-request-id` propagated, rate-limit counter incremented), expired token (401 `expired`, upstream never called), Anthropic 4xx (sanitized to `upstream_error` envelope with the internal trace ID stripped), rate-limit exceeded (429 `daily_limit_exceeded` with `Retry-After` header and `scope: total`, upstream never called).
+
+      MSP019's deferred **secret-redaction assertion** now lives here as part of the happy path: a `console.log` spy captures every log line during the request and asserts the Anthropic API key value never appears in any of them. Verified-by-construction now becomes verified-by-test.
+
+      `npm test` runs 13 cases (9 verifier + 4 integration) in ~270ms; already wired into CI via the step added in MSP022.
 
 - [x] **MSP025** — Mermaid architecture diagram in README.
 
