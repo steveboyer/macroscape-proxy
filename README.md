@@ -10,26 +10,35 @@ The HTTP contract for callers lives in [`CONTRACT.md`](./CONTRACT.md); the backl
 
 ```mermaid
 flowchart LR
-    iOS["iOS app<br/>(MacroScape)"]
+    subgraph Client[" "]
+        iOS["iOS app<br/>(MacroScape)"]
+    end
 
     subgraph AWS["AWS · us-west-2"]
+        direction TB
         APIGW["API Gateway<br/>api.macroscape.app"]
         Lambda["Lambda<br/>handler"]
         DDB[("DynamoDB<br/>users · daily counters")]
         Secrets[("Secrets Manager<br/>upstream API keys")]
+        APIGW --> Lambda
+        Lambda <--> DDB
+        Lambda -- "GetSecretValue" --> Secrets
     end
 
-    Apple["Apple JWKS<br/>appleid.apple.com"]
-    Anthropic["Anthropic<br/>api.anthropic.com"]
-    USDA["USDA FDC<br/>api.nal.usda.gov"]
+    subgraph External[" "]
+        direction TB
+        Apple["Apple JWKS<br/>appleid.apple.com"]
+        Anthropic["Anthropic<br/>api.anthropic.com"]
+        USDA["USDA FDC<br/>api.nal.usda.gov"]
+    end
 
     iOS -- "Bearer id_token" --> APIGW
-    APIGW --> Lambda
     Lambda -- "verify JWKS<br/>(cached)" --> Apple
-    Lambda <--> DDB
-    Lambda -- "GetSecretValue" --> Secrets
     Lambda -- "x-api-key" --> Anthropic
     Lambda -- "api_key=…" --> USDA
+
+    style Client fill:transparent,stroke:transparent
+    style External fill:transparent,stroke:transparent
 ```
 
 Two CDK stacks in `bin/macroscape-proxy.ts`:
