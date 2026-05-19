@@ -1,6 +1,7 @@
 # macroscape-proxy API contract
 
-The API surface clients consume to talk to the proxy. Currently the only client is the MacroScape iOS app.
+The API surface clients consume to talk to the proxy. Currently the only client is the MacroScape
+iOS app.
 
 ## Base URL
 
@@ -28,7 +29,8 @@ The upstream provider is visible in the URL on purpose. This:
 - gives future upstreams a clean slot (`/v1/openai/...`, `/v1/openfoodfacts/...`);
 - makes provider swaps an explicit decision at the URL level rather than a hidden one.
 
-Routes that don't forward to a third-party upstream don't follow this pattern — currently only `/health`.
+Routes that don't forward to a third-party upstream don't follow this pattern — currently only
+`/health`.
 
 ## Authentication
 
@@ -38,27 +40,31 @@ All endpoints require **Sign in with Apple**. The client sends Apple's id_token 
 Authorization: Bearer <id_token>
 ```
 
-The id_token is obtained on iOS via `ASAuthorizationAppleIDCredential.identityToken` after a successful Sign in with Apple flow. Apple id_tokens have a ~10-minute TTL; the client refreshes via the iOS framework, not via the proxy.
+The id_token is obtained on iOS via `ASAuthorizationAppleIDCredential.identityToken` after a
+successful Sign in with Apple flow. Apple id_tokens have a ~10-minute TTL; the client refreshes via
+the iOS framework, not via the proxy.
 
 ### JWT verification
 
 Every id_token is verified before the request is processed:
 
-| Check       | Required value                                              |
-| ----------- | ----------------------------------------------------------- |
-| Signature   | Verified against Apple's public keys                        |
-| `iss` claim | `https://appleid.apple.com`                                 |
-| `aud` claim | `app.macroscape.MacroScape` (the iOS app's Bundle ID)       |
-| `exp` claim | Must be in the future                                       |
-| `sub` claim | Must be a non-empty string (used as the proxy's `userId`)   |
+| Check       | Required value                                            |
+| ----------- | --------------------------------------------------------- |
+| Signature   | Verified against Apple's public keys                      |
+| `iss` claim | `https://appleid.apple.com`                               |
+| `aud` claim | `app.macroscape.MacroScape` (the iOS app's Bundle ID)     |
+| `exp` claim | Must be in the future                                     |
+| `sub` claim | Must be a non-empty string (used as the proxy's `userId`) |
 
-JWKS is fetched from `https://appleid.apple.com/auth/keys` and cached in the Lambda container; cold starts pay one HTTPS fetch.
+JWKS is fetched from `https://appleid.apple.com/auth/keys` and cached in the Lambda container; cold
+starts pay one HTTPS fetch.
 
 ## Endpoints
 
 ### `GET /health`
 
-Verifies auth and ensures a user record exists in the proxy's database. Suitable as a liveness/auth probe from the client. **Not rate-limited.**
+Verifies auth and ensures a user record exists in the proxy's database. Suitable as a liveness/auth
+probe from the client. **Not rate-limited.**
 
 **Request:**
 
@@ -81,7 +87,8 @@ Authorization: Bearer <id_token>
 
 ### `POST /v1/anthropic/messages`
 
-Proxies the request to `https://api.anthropic.com/v1/messages`. Body is forwarded **unchanged**. Response status + `content-type` + body are forwarded back unchanged. **Rate-limited** (see below).
+Proxies the request to `https://api.anthropic.com/v1/messages`. Body is forwarded **unchanged**.
+Response status + `content-type` + body are forwarded back unchanged. **Rate-limited** (see below).
 
 **Request:**
 
@@ -95,7 +102,8 @@ anthropic-beta: prompt-caching-2024-07-31
 <Anthropic request body — passed through>
 ```
 
-The caller's `Authorization` header (the Apple id_token) is **dropped** before forwarding to Anthropic. The proxy attaches its own `x-api-key` from Secrets Manager.
+The caller's `Authorization` header (the Apple id_token) is **dropped** before forwarding to
+Anthropic. The proxy attaches its own `x-api-key` from Secrets Manager.
 
 **Request headers forwarded to Anthropic** (strict allowlist; anything else is dropped):
 
@@ -105,11 +113,17 @@ The caller's `Authorization` header (the Apple id_token) is **dropped** before f
 - `accept`
 - `accept-encoding`
 
-**Request ID propagation:** The client may include an `x-request-id` header (alphanumeric + `-`/`_`, max 200 chars) to correlate iOS-side and proxy-side logs. If absent or invalid, the proxy generates a UUID. Either way, the same ID is attached to the outbound request to Anthropic as `x-request-id`, and surfaces in every proxy CloudWatch log line for the request.
+**Request ID propagation:** The client may include an `x-request-id` header (alphanumeric + `-`/`_`,
+max 200 chars) to correlate iOS-side and proxy-side logs. If absent or invalid, the proxy generates
+a UUID. Either way, the same ID is attached to the outbound request to Anthropic as `x-request-id`,
+and surfaces in every proxy CloudWatch log line for the request.
 
-**Response (2xx):** Anthropic's response, byte-for-byte. Prompt-cache hit/miss is visible in `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens` in the body.
+**Response (2xx):** Anthropic's response, byte-for-byte. Prompt-cache hit/miss is visible in
+`usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens` in the body.
 
-**Response (non-2xx from Anthropic):** Anthropic's status code is preserved; the body is **sanitized** into a known envelope to prevent upstream implementation details (request IDs, internal codes, stack traces) from leaking:
+**Response (non-2xx from Anthropic):** Anthropic's status code is preserved; the body is
+**sanitized** into a known envelope to prevent upstream implementation details (request IDs,
+internal codes, stack traces) from leaking:
 
 ```json
 {
@@ -121,9 +135,13 @@ The caller's `Authorization` header (the Apple id_token) is **dropped** before f
 }
 ```
 
-If the upstream response isn't parseable JSON or doesn't match Anthropic's standard `{ error: { type, message } }` shape, `upstream.type` falls back to `"unknown"` with a generic message. The status code is still forwarded as-is.
+If the upstream response isn't parseable JSON or doesn't match Anthropic's standard
+`{ error: { type, message } }` shape, `upstream.type` falls back to `"unknown"` with a generic
+message. The status code is still forwarded as-is.
 
-**Response headers forwarded back to caller:** `content-type` only. Anthropic's `request-id`, `anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional headers be exposed, file an issue.
+**Response headers forwarded back to caller:** `content-type` only. Anthropic's `request-id`,
+`anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional
+headers be exposed, file an issue.
 
 ### `GET /v1/usda/foods/search`
 
@@ -142,11 +160,19 @@ Authorization: Bearer <id_token>
 - `dataType`
 - `pageSize`
 
-USDA authenticates via `api_key` **query parameter** (not a header). If the caller includes `api_key` in the query string, the proxy **drops it** and substitutes its own from Secrets Manager. Never pass through a stale or test API key.
+USDA authenticates via `api_key` **query parameter** (not a header). If the caller includes
+`api_key` in the query string, the proxy **drops it** and substitutes its own from Secrets Manager.
+Never pass through a stale or test API key.
 
-**Response (2xx):** USDA's response, byte-for-byte (status + `content-type` + body). USDA's response shape (`foods[].fdcId`, `description`, `dataType`, `foodNutrients[]…`) is unchanged.
+**Response (2xx):** USDA's response, byte-for-byte (status + `content-type` + body). USDA's response
+shape (`foods[].fdcId`, `description`, `dataType`, `foodNutrients[]…`) is unchanged.
 
-**Response (non-2xx from USDA):** Sanitized to a known envelope. USDA's 429 (over-quota) and 403 (DEMO_KEY exhausted) both map to `429 { error: "upstream_rate_limited", upstream: { type, message } }` — distinct from the proxy's own `daily_limit_exceeded` 429 (which signals the per-user proxy quota was hit). Other non-2xx pass through as `{ error: "upstream_error", upstream: { type, message } }` with USDA's status code preserved.
+**Response (non-2xx from USDA):** Sanitized to a known envelope. USDA's 429 (over-quota) and 403
+(DEMO_KEY exhausted) both map to
+`429 { error: "upstream_rate_limited", upstream: { type, message } }` — distinct from the proxy's
+own `daily_limit_exceeded` 429 (which signals the per-user proxy quota was hit). Other non-2xx pass
+through as `{ error: "upstream_error", upstream: { type, message } }` with USDA's status code
+preserved.
 
 ## Error responses
 
@@ -156,40 +182,51 @@ All proxy-originated error responses have a JSON body of the form:
 { "error": "<reason>", "...optional fields": "..." }
 ```
 
-| Status | `error`                  | When                                                                         | Extra fields                |
-| ------ | ------------------------ | ---------------------------------------------------------------------------- | --------------------------- |
-| 401    | `missing_bearer_token`   | No `Authorization` header, or doesn't match `Bearer <token>`                 | —                           |
-| 401    | `expired`                | id_token's `exp` is in the past                                              | —                           |
-| 401    | `invalid_signature`      | id_token signature doesn't verify against Apple's JWKS                       | —                           |
-| 401    | `invalid_issuer`         | id_token's `iss` is not `https://appleid.apple.com`                          | —                           |
-| 401    | `invalid_audience`       | id_token's `aud` is not `app.macroscape.MacroScape`                          | —                           |
-| 401    | `malformed`              | Token isn't a parseable JWT, or `sub` is missing                             | —                           |
-| 401    | `jwks_fetch_failed`      | Proxy couldn't fetch Apple's JWKS (transient)                                | —                           |
-| 404    | `not_found`              | Unknown route                                                                | `path`                      |
-| 405    | `method_not_allowed`     | Wrong HTTP method (e.g., `GET /v1/anthropic/messages`)                       | —                           |
-| 429    | `daily_limit_exceeded`   | User hit their daily request limit on the proxy itself                       | `scope`, `group`, `limit`, `count`, `resetsAt` |
-| 429    | `upstream_rate_limited`  | USDA returned 429 (over-quota) or 403 (DEMO_KEY exhausted)                   | `upstream` (type, message)  |
-| 503    | `upstream_not_configured`| Proxy's upstream API key isn't populated in Secrets Manager (transient)      | —                           |
-| 4xx/5xx| `upstream_error`         | Upstream returned non-2xx (other than rate-limit); status forwarded          | `upstream` (type, message)  |
-| 500    | (none)                   | Unexpected internal error; Lambda default response (not this JSON shape)     | —                           |
+| Status  | `error`                   | When                                                                     | Extra fields                                   |
+| ------- | ------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| 401     | `missing_bearer_token`    | No `Authorization` header, or doesn't match `Bearer <token>`             | —                                              |
+| 401     | `expired`                 | id_token's `exp` is in the past                                          | —                                              |
+| 401     | `invalid_signature`       | id_token signature doesn't verify against Apple's JWKS                   | —                                              |
+| 401     | `invalid_issuer`          | id_token's `iss` is not `https://appleid.apple.com`                      | —                                              |
+| 401     | `invalid_audience`        | id_token's `aud` is not `app.macroscape.MacroScape`                      | —                                              |
+| 401     | `malformed`               | Token isn't a parseable JWT, or `sub` is missing                         | —                                              |
+| 401     | `jwks_fetch_failed`       | Proxy couldn't fetch Apple's JWKS (transient)                            | —                                              |
+| 404     | `not_found`               | Unknown route                                                            | `path`                                         |
+| 405     | `method_not_allowed`      | Wrong HTTP method (e.g., `GET /v1/anthropic/messages`)                   | —                                              |
+| 429     | `daily_limit_exceeded`    | User hit their daily request limit on the proxy itself                   | `scope`, `group`, `limit`, `count`, `resetsAt` |
+| 429     | `upstream_rate_limited`   | USDA returned 429 (over-quota) or 403 (DEMO_KEY exhausted)               | `upstream` (type, message)                     |
+| 503     | `upstream_not_configured` | Proxy's upstream API key isn't populated in Secrets Manager (transient)  | —                                              |
+| 4xx/5xx | `upstream_error`          | Upstream returned non-2xx (other than rate-limit); status forwarded      | `upstream` (type, message)                     |
+| 500     | (none)                    | Unexpected internal error; Lambda default response (not this JSON shape) | —                                              |
 
 The recommended client mapping:
 
 - **401** of any kind → re-auth via Sign in with Apple and retry once
-- **429 `daily_limit_exceeded`** → respect `Retry-After`; surface `resetsAt` in UI; this is the proxy throttling the user
-- **429 `upstream_rate_limited`** → the upstream provider is throttling (DEMO_KEY exhaustion or genuine over-quota); back off and retry, surface as a distinct UI message from the proxy's own quota
+- **429 `daily_limit_exceeded`** → respect `Retry-After`; surface `resetsAt` in UI; this is the
+  proxy throttling the user
+- **429 `upstream_rate_limited`** → the upstream provider is throttling (DEMO_KEY exhaustion or
+  genuine over-quota); back off and retry, surface as a distinct UI message from the proxy's own
+  quota
 - **503 `upstream_not_configured`** → brief backoff and retry (transient during proxy rollout)
 - **5xx other** → standard backoff with jitter
 - **4xx other** → user-facing error, no retry
 
 ## Rate limiting
 
-Rate-limited endpoints are `POST /v1/anthropic/messages` and `GET /v1/usda/foods/search`. `/health` is **not** rate-limited.
+Rate-limited endpoints are `POST /v1/anthropic/messages` and `GET /v1/usda/foods/search`. `/health`
+is **not** rate-limited.
 
 The proxy tracks **two counters per user per UTC day**:
 
-- **Total counter** — incremented on every rate-limited request, regardless of endpoint. Enforced against `DEFAULT_DAILY_LIMIT` (currently `100/day`) unless the user's `dailyLimit` attribute overrides it.
-- **Per-upstream-group counter** — incremented on every rate-limited request within an upstream group. Group names match the URL convention's `<upstream-provider>` segment (`anthropic`, `usda`; future: `openai`, etc.). Always tracked for observability. **Enforced** only when a `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>` attribute is set (e.g., `DEFAULT_DAILY_LIMIT_USDA=500`, `dailyLimitUsda=500`). Currently no per-group enforcement is configured; total-only is the binding limit.
+- **Total counter** — incremented on every rate-limited request, regardless of endpoint. Enforced
+  against `DEFAULT_DAILY_LIMIT` (currently `100/day`) unless the user's `dailyLimit` attribute
+  overrides it.
+- **Per-upstream-group counter** — incremented on every rate-limited request within an upstream
+  group. Group names match the URL convention's `<upstream-provider>` segment (`anthropic`, `usda`;
+  future: `openai`, etc.). Always tracked for observability. **Enforced** only when a
+  `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>` attribute is set (e.g.,
+  `DEFAULT_DAILY_LIMIT_USDA=500`, `dailyLimitUsda=500`). Currently no per-group enforcement is
+  configured; total-only is the binding limit.
 
 Counted regardless of upstream outcome — upstream errors, 5xx responses, etc. still consume quota.
 
@@ -214,7 +251,11 @@ The client gets both the header (per RFC 7231) and the body fields (for UI). Use
 
 ## Not yet implemented
 
-These are tracked in `issues.md` and will land in future releases. Clients should be prepared for them to change:
+These are tracked in `issues.md` and will land in future releases. Clients should be prepared for
+them to change:
 
-- **Streaming responses** (`stream: true` in Anthropic body) — proxy currently buffers the full response and may not handle Anthropic SSE chunked transfer correctly. If your client needs streaming, file an issue before depending on `/v1/anthropic/messages` for streaming calls.
-- **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy to add when requested.
+- **Streaming responses** (`stream: true` in Anthropic body) — proxy currently buffers the full
+  response and may not handle Anthropic SSE chunked transfer correctly. If your client needs
+  streaming, file an issue before depending on `/v1/anthropic/messages` for streaming calls.
+- **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy
+  to add when requested.

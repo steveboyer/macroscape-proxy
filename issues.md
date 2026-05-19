@@ -2,7 +2,10 @@
 
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
-Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number (currently **MSP044** is next). IDs never change once assigned, even if items are reordered, edited, or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs remain stable.
+Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
+(currently **MSP044** is next). IDs never change once assigned, even if items are reordered, edited,
+or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
+remain stable.
 
 ## Contents
 
@@ -16,21 +19,24 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ### Infrastructure
 
-- [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint testing, dotenv-style local config that mirrors Secrets Manager keys without committing values.
+- [ ] **MSP008** — Local dev workflow: esbuild watch, `sam local invoke` or equivalent for endpoint
+      testing, dotenv-style local config that mirrors Secrets Manager keys without committing
+      values.
 
-- [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass, disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this load-bearing.
+- [ ] **MSP036** — Enable branch protection on `main`: require PR before merge, require CI to pass,
+      disallow force-pushes and deletions. Public repo with an OIDC-trusted deploy role makes this
+      load-bearing.
 
 ### Auth
 
 ### Forwarding
 
-- [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If not, mark this complete with a note that streaming was not needed.
+- [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If
+      not, mark this complete with a note that streaming was not needed.
 
 ### Observability and security
 
 ### Testing
-
-
 
 ### Documentation
 
@@ -38,19 +44,26 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
 ## Future / longer-term
 
-- [ ] **MSP026** — Plan tiers (free vs paid) with differentiated rate limits. Stored on user record, enforced in MSP018 logic.
+- [ ] **MSP026** — Plan tiers (free vs paid) with differentiated rate limits. Stored on user record,
+      enforced in MSP018 logic.
 
-- [ ] **MSP027** — Detailed per-call audit log in a dedicated DynamoDB table beyond CloudWatch. Useful for billing reconciliation and abuse forensics.
+- [ ] **MSP027** — Detailed per-call audit log in a dedicated DynamoDB table beyond CloudWatch.
+      Useful for billing reconciliation and abuse forensics.
 
-- [ ] **MSP028** — CloudWatch billing alarms for cost protection. Trigger SNS notification at configured monthly spend thresholds.
+- [ ] **MSP028** — CloudWatch billing alarms for cost protection. Trigger SNS notification at
+      configured monthly spend thresholds.
 
-- [ ] **MSP029** — AWS WAF rules in front of API Gateway for basic abuse protection (rate limit by IP, block obvious scanner patterns).
+- [ ] **MSP029** — AWS WAF rules in front of API Gateway for basic abuse protection (rate limit by
+      IP, block obvious scanner patterns).
 
-- [ ] **MSP030** — Multi-region deployment with latency-based routing. Likely overkill for current scale; revisit if launch demand warrants.
+- [ ] **MSP030** — Multi-region deployment with latency-based routing. Likely overkill for current
+      scale; revisit if launch demand warrants.
 
 - [ ] **MSP031** — Admin endpoint for usage review (auth-protected, single-user for now).
 
-- [ ] **MSP032** — Migrate AIRequestLog inspection from the iOS client to a proxy-side store. Trade: better central observability, larger blast radius if compromised. Decide based on launch posture.
+- [ ] **MSP032** — Migrate AIRequestLog inspection from the iOS client to a proxy-side store. Trade:
+      better central observability, larger blast radius if compromised. Decide based on launch
+      posture.
 
 ---
 
@@ -80,13 +93,15 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       Replaced the ASCII flow MSP024 left as a placeholder with a Mermaid `flowchart LR`: iOS on the left, AWS subgraph in the middle (APIGW → Lambda + DynamoDB + Secrets Manager), and the three external services on the right (Apple JWKS, Anthropic, USDA). Labeled edges call out the Bearer id_token, JWKS verification, `GetSecretValue`, and the two upstream auth mechanisms (`x-api-key` for Anthropic, `api_key=…` query param for USDA). GitHub renders Mermaid natively in markdown, so the diagram is visible in the browser without external tooling.
 
-- [x] **MSP024** — README covering architecture overview, local dev setup, AWS prerequisites, deploy steps, and how to rotate an upstream API key.
+- [x] **MSP024** — README covering architecture overview, local dev setup, AWS prerequisites, deploy
+      steps, and how to rotate an upstream API key.
 
       Replaced the 31-line stub with a sectioned README. Architecture section gives the iOS → APIGW → Lambda → upstreams flow (ASCII; the Mermaid version is MSP025) plus a stack summary of `MacroScapeProxyStack` + `MacroScapeProxyGithubOidcStack` and a route table covering `/health`, `/v1/anthropic/messages` (+ `/v1/messages` legacy alias), `/v1/usda/foods/search` (+ `/v1/foods/search` legacy alias). Local dev mirrors the commands in CLAUDE.md and notes there's no `sam local` workflow yet (MSP008). AWS prerequisites covers the three first-time setup steps: `cdk bootstrap`, one-time OIDC stack deploy, registrar NS delegation for `macroscape.app`. Deploy section documents both CI/CD (`.github/workflows/deploy.yml` via OIDC, serialized via `concurrency: deploy`) and manual `cdk diff` / `cdk deploy`, with a table of the three Secrets Manager entries to populate post-deploy. Rotation section explains the warm-container caching behavior and shows `aws secretsmanager put-secret-value` plus the env-var-bump trick to force immediate rollout (vs waiting for warm containers to recycle). Pointers to `CONTRACT.md` (HTTP contract), `issues.md` (backlog), and `docs/` (operator setup) up top.
 
       Corrected stale facts from the old README: Node runtime is 22 (not 20), status is no longer "pre-implementation", upstreams include USDA not just Anthropic, Secrets Manager has three entries not two.
 
-- [x] **MSP009** — Apple Developer Sign-In configuration: Services ID, Key, Team ID; document and populate the private-key secret.
+- [x] **MSP009** — Apple Developer Sign-In configuration: Services ID, Key, Team ID; document and
+      populate the private-key secret.
 
       Documentation-only task (no code change). New `docs/apple-setup.md` covers what to register at developer.apple.com — App ID with Sign in with Apple capability (currently required, for the iOS native flow the proxy already supports), and the Services ID + Key (`.p8`) + Team ID (currently deferred, for future server-side flows like revocation/refresh/web-flow). Includes the `aws secretsmanager put-secret-value` command for populating `macroscape-proxy/apple-signin-private-key` with the `.p8` contents.
 
@@ -94,7 +109,8 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       Operational follow-up (manual, when ready): user registers the Services ID + Key + Team ID and `put-secret-value`s the `.p8` contents. Lambda already has IAM read on the secret from MSP005 + MSP021.
 
-- [x] **MSP042** — Adopt `/v1/<upstream-provider>/<endpoint>` URL convention for all upstream-forwarding routes.
+- [x] **MSP042** — Adopt `/v1/<upstream-provider>/<endpoint>` URL convention for all
+      upstream-forwarding routes.
 
       Decision: every route that forwards to a third-party upstream lives at `/v1/<upstream>/<endpoint>`. Provider visible in the URL gives free debugging/observability, makes per-upstream rate-limit counters and cost attribution real, and gives future upstreams (`/v1/openai/...`, `/v1/openfoodfacts/...`) a clean slot. Routes that don't forward upstream (currently only `/health`) skip the prefix.
 
@@ -110,7 +126,8 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       **Post-deploy:** populate `macroscape-proxy/usda-api-key` with a real USDA FoodData Central API key (register at api.data.gov). Default quota is 1000 req/hour shared across all proxy users — proxy's per-user daily limit (100/day default total) keeps any single user from monopolizing it.
 
-- [x] **MSP040** — Rename `/v1/messages` → `/v1/anthropic/messages` with transitional alias; per-endpoint rate-limit counters.
+- [x] **MSP040** — Rename `/v1/messages` → `/v1/anthropic/messages` with transitional alias;
+      per-endpoint rate-limit counters.
 
       Routing: `/v1/messages` and `/v1/anthropic/messages` both dispatch to the same handler, so iOS can flip the URL constant on its own timeline. Both report `group: "anthropic"` to the rate limiter. CONTRACT.md marks `/v1/messages` legacy with a target removal window (no earlier than 90 days after iOS confirms cutover).
 
@@ -118,7 +135,8 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       Existing `USAGE#<sub>` data preserved unchanged (the rename only adds the parallel `USAGE-<group>#<sub>` rows). No migration needed.
 
-- [x] **MSP037** — Don't populate `macroscape-proxy/upstream-api-key` until handler-side auth is in place.
+- [x] **MSP037** — Don't populate `macroscape-proxy/upstream-api-key` until handler-side auth is in
+      place.
 
       Satisfied: auth gate (MSP010 + MSP012, Apple JWT verification on every `/v1/messages` call) plus per-user daily rate limit (MSP017 + MSP018) together close the wallet-drain vector this item was guarding against. Pre-auth, an unauthenticated caller couldn't drain the secret because the secret was empty; post-auth, only users with a valid Apple Sign-In id_token can reach the proxy, and each is capped at the per-user daily limit (default 100/day, override per user). The remaining residual risk — rogue authenticated user burning their own quota — is bounded by the limit and visible via the per-`userId` CloudWatch logs from MSP019. Secret population is now safe to do (and required for `/v1/messages` to function).
 
@@ -154,29 +172,35 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       Per-user override: set the `dailyLimit` number attribute on the user's `USER#<sub>/PROFILE` row directly via DynamoDB console/CLI. No admin endpoint yet (MSP031, future). `/health` is intentionally NOT rate-limited — it's cheap, doesn't call upstream, and the iOS app may poll it to refresh user state.
 
-- [x] **MSP013 + MSP014** — `/v1/messages` POST proxy to `https://api.anthropic.com/v1/messages` with header rewriting.
+- [x] **MSP013 + MSP014** — `/v1/messages` POST proxy to `https://api.anthropic.com/v1/messages`
+      with header rewriting.
 
       Auth-gated POST route. New `src/upstream/anthropic.ts` fetches the Anthropic key from `macroscape-proxy/upstream-api-key` via `@aws-sdk/client-secrets-manager`, caches it module-scope (warm-start reuse; cache invalidates with container recycling — fine until secret rotation is routine). Header policy is a **strict allowlist** (`content-type`, `anthropic-version`, `anthropic-beta`, `accept`, `accept-encoding`) — anything else from the caller is dropped, and the caller's `Authorization` (Apple JWT) never leaves the proxy. Outbound headers add `x-api-key: <secret>` and force `content-type: application/json`. Body is passed through unchanged (with base64-decode if the caller flagged `isBase64Encoded`). Response forwards Anthropic's status + content-type + body; other upstream headers are dropped pending MSP016. Empty secret returns `503 upstream_not_configured` (until the secret is populated post-deploy). Non-POST methods return `405 method_not_allowed`. Auth lifted out of the handler into `src/auth/authenticate.ts` (`AuthError` with `statusCode` + `reason`) so both `/health` and `/v1/messages` share one path. Streaming and error sanitization are still deferred to MSP015 and MSP016.
 
       **Post-deploy:** populate `macroscape-proxy/upstream-api-key` with the Anthropic API key — until then, every `/v1/messages` call returns 503.
 
-- [x] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent: subsequent requests look up rather than recreate.
+- [x] **MSP011** — Auto-create user record in DynamoDB on first authenticated request. Idempotent:
+      subsequent requests look up rather than recreate.
 
       New `src/db/users.ts` exports `upsertUser(appleUserId): { created }`. Uses `DynamoDBDocumentClient` (lib-dynamodb) with `PutCommand` + `ConditionExpression: attribute_not_exists(pk)` to insert idempotently — the first write succeeds (`created: true`), subsequent writes hit the conditional check and return `created: false` without a second round trip to read the row. Item shape: `{ pk: 'USER#<sub>', sk: 'PROFILE', createdAt: <ISO timestamp> }` per the conventions in `src/db/keys.ts` (MSP004). Wired into `/health` so the response is now `{ ok: true, userId, created }`. Lambda already has `grantReadWriteData` on the table from MSP001/MSP004. Module-scope DynamoDB client survives warm starts.
 
-- [x] **MSP012** — `/health` endpoint that authenticates the caller and returns the verified user identity. First end-to-end auth proof point.
+- [x] **MSP012** — `/health` endpoint that authenticates the caller and returns the verified user
+      identity. First end-to-end auth proof point.
 
       `src/handler.ts` now routes on `event.rawPath`: `/health` extracts the Bearer token from `Authorization`, calls `verifyAppleIdToken` (MSP010), returns `{ ok: true, userId: claims.sub }` on success or `401 { error: <reason> }` on `AppleTokenError` (one of `missing_bearer_token`, `expired`, `invalid_signature`, `invalid_issuer`, `invalid_audience`, `malformed`, `jwks_fetch_failed`). Unexpected errors propagate to Lambda 500. All other paths return 404. The previous placeholder echo (any path → 200 with `macroscape-proxy is alive`) is gone — `GET /` is now 404. Helpers (`extractBearerToken`, `jsonResponse`) live inline in `handler.ts`; extract into a module when MSP013 also needs them.
 
-- [x] **MSP010** — Apple ID token verification: fetch and cache JWKS, validate signature, check `iss`, `aud`, and `exp` claims.
+- [x] **MSP010** — Apple ID token verification: fetch and cache JWKS, validate signature, check
+      `iss`, `aud`, and `exp` claims.
 
       New module `src/auth/appleVerifier.ts` exports `verifyAppleIdToken(token)` and a typed `AppleTokenError` (with discriminator `reason`: `expired` / `invalid_signature` / `invalid_issuer` / `invalid_audience` / `malformed` / `jwks_fetch_failed`) so the eventual route handler (MSP012) can map errors to 401 vs 500. Uses `jose` — module-scope `createRemoteJWKSet` singleton survives Lambda warm starts, so warm invocations reuse the cached JWKS (cold starts pay one HTTPS fetch from `appleid.apple.com/auth/keys`). Issuer is hardcoded (`https://appleid.apple.com`); audience is the iOS Bundle ID `app.macroscape.MacroScape`, passed as `APPLE_AUD` env var via `lib/macroscape-proxy-stack.ts` so a deploy-time misconfiguration fails fast. `sub` claim presence is asserted at runtime (Apple always populates it). Out of scope here: the route that *calls* the verifier (MSP012) and fixture-driven unit tests (MSP022).
 
-- [x] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4` major-version tags.
+- [x] **MSP038** — Pin GitHub Actions in `.github/workflows/*.yml` to commit SHAs rather than `@v4`
+      major-version tags.
 
       All three actions pinned to their latest v4-series SHA (preserving the current major; major bumps stay deliberate): `actions/checkout` → `34e114876b0b11c390a56381ad16ebd13914f8d5` (v4.3.1), `actions/setup-node` → `49933ea5288caeca8642d1e84afbd3f7d6820020` (v4.4.0), `aws-actions/configure-aws-credentials` → `7474bc4690e29a8392af63c5b98e7449536d5c3a` (v4.3.1). New `.github/dependabot.yml` runs the `github-actions` ecosystem weekly to keep pins current; Dependabot will surface v5/v6 majors as reviewable PRs rather than silently consuming them.
 
-- [x] **MSP034** — Add `concurrency: { group: deploy, cancel-in-progress: false }` to `.github/workflows/deploy.yml`.
+- [x] **MSP034** — Add `concurrency: { group: deploy, cancel-in-progress: false }` to
+      `.github/workflows/deploy.yml`.
 
       Two merges to `main` in quick succession now serialize through `cdk deploy` instead of racing for the CloudFormation stack lock. `cancel-in-progress: false` is deliberate — never abandon an in-flight deploy mid-rollout, since CFN can be left in `UPDATE_IN_PROGRESS` requiring manual recovery.
 
@@ -184,7 +208,8 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       Top-level `permissions` block makes the default `GITHUB_TOKEN` scope explicit and immune to org/repo setting drift. `deploy.yml` already had explicit permissions (`id-token: write` + `contents: read`); CI just needs read.
 
-- [x] **MSP035** — Remove the `console.log('event', JSON.stringify(event))` line in `src/handler.ts` before MSP010 lands.
+- [x] **MSP035** — Remove the `console.log('event', JSON.stringify(event))` line in `src/handler.ts`
+      before MSP010 lands.
 
       Dropped the line. The placeholder handler now logs nothing per request. MSP019 will reintroduce structured, redaction-aware logging when there's an auth-verified user to attach `userId` to. Landing this before MSP010 means no JWT-leak window exists if MSP010 deploys ahead of MSP019.
 
@@ -194,27 +219,34 @@ Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take t
 
       Manual rollout completed 2026-05-16: deployed the new OIDC stack, renamed the GitHub repo and re-pointed the remote, deployed `MacroScapeProxyStack` (which created the `macroscape.app` hosted zone — NS records delegated at Namecheap, ACM auto-validated within minutes), destroyed the pre-rebrand `MacrosightProxyStack` and its two orphaned empty DynamoDB tables, and renamed the local working directory.
 
-- [x] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway custom domain mapping.
+- [x] **MSP006** — Custom domain via Route 53 hosted zone plus ACM certificate plus API Gateway
+      custom domain mapping.
 
       Project rebranded to MacroScape; API serves at `api.macroscape.app`. `lib/macroscape-proxy-stack.ts` now provisions a `HostedZone` for `macroscape.app` (RETAIN on destroy), an ACM `Certificate` for `api.macroscape.app` DNS-validated against the zone, an APIGW v2 `DomainName` wired as `defaultDomainMapping` on `HttpApi`, and A + AAAA alias records pointing at `ApiGatewayv2DomainProperties`. Stack outputs the four `HostedZoneNameServers` so they can be copied to the registrar. First deploy hangs on cert validation until NS delegation propagates — minutes, not hours, in practice. At this stage the stack and repo names were intentionally left at their pre-rebrand identifiers — renaming would have orphaned the CFN stack and broken the OIDC role's trust-policy subject claim; that rename was subsequently handled in MSP039.
 
-- [x] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In private key. No secret values in code or environment variables committed to git.
+- [x] **MSP005** — AWS Secrets Manager entries for the Anthropic API key and the Apple Sign-In
+      private key. No secret values in code or environment variables committed to git.
 
       `lib/macroscape-proxy-stack.ts`: `UpstreamApiKey` (`macroscape-proxy/upstream-api-key`) was already in place from `1daa0c4`; added `AppleSignInPrivateKey` (`macroscape-proxy/apple-signin-private-key`) for client_secret JWT signing against Apple's token endpoint. Both secrets are created empty — populate post-deploy via console/CLI. Lambda gets `grantRead` on both and the ARNs surface via `UPSTREAM_SECRET_ARN` / `APPLE_SIGNIN_SECRET_ARN` env vars. Apple ID-token verification (MSP010) uses JWKS, not this private key — the private key is for the auth-code-exchange / token-revocation paths.
 
-- [x] **MSP002** — Lambda function definition on ARM Graviton2 architecture, sized at the smallest memory tier that handles the workload (start at 512 MB, tune later).
+- [x] **MSP002** — Lambda function definition on ARM Graviton2 architecture, sized at the smallest
+      memory tier that handles the workload (start at 512 MB, tune later).
 
       `lib/macroscape-proxy-stack.ts`: added `architecture: lambda.Architecture.ARM_64` and bumped `memorySize` 256 → 512 per the item's stated starting point. Tune downward once the real handler (MSP013–MSP016) is in place and there's profile data to inform the choice.
 
-- [x] **MSP004** — DynamoDB single-table design. PK conventions: `USER#{appleUserId}` for user records, `USAGE#{appleUserId}` with SK `DATE#{YYYY-MM-DD}` for usage records. TTL attribute on usage rows so old counters auto-expire.
+- [x] **MSP004** — DynamoDB single-table design. PK conventions: `USER#{appleUserId}` for user
+      records, `USAGE#{appleUserId}` with SK `DATE#{YYYY-MM-DD}` for usage records. TTL attribute on
+      usage rows so old counters auto-expire.
 
       CDK table from `1daa0c4` (`TableV2` with generic `pk`/`sk`/`ttl`) plus the schema-conventions module `src/db/keys.ts`: `userKey`, `usageKey`, `usageTtl` (epoch seconds at end-of-UTC-day + 90-day default retention). End-of-day normalization means rows written at 00:01 and 23:59 of the same date expire together. UTC reset boundary so per-day limits behave consistently across user timezones. Nothing exercises the helpers yet — MSP011 / MSP017 will be the first consumers; fix forward if those reveal a problem.
 
-- [x] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based AWS auth (no long-lived access keys in repo secrets).
+- [x] **MSP007** — GitHub Actions workflow for CDK synth and deploy on push to `main`. OIDC-based
+      AWS auth (no long-lived access keys in repo secrets).
 
       Done in `8410ec1` (`GithubOidcStack` provisions the OIDC provider + `MacroScapeProxyGithubDeployRole`, restricted to `repo:steveboyer/macroscape-proxy:ref:refs/heads/main`) and `cbe75c7` (`.github/workflows/ci.yml` runs lint/format/tsc/synth; `.github/workflows/deploy.yml` assumes the deploy role via `aws-actions/configure-aws-credentials@v4` and runs `cdk deploy MacroScapeProxyStack --require-approval never`). Hardening follow-ups split out as MSP033 / MSP034 / MSP036.
 
-- [x] **MSP003** — API Gateway HTTP API with Lambda proxy integration. HTTP API rather than REST API; only the routes actually needed.
+- [x] **MSP003** — API Gateway HTTP API with Lambda proxy integration. HTTP API rather than REST
+      API; only the routes actually needed.
 
       Done in `1daa0c4`. `HttpApi` + `HttpLambdaIntegration` in `lib/macroscape-proxy-stack.ts`. Single catch-all `/{proxy+}` route on any method — fine while the handler is a placeholder; tighten to specific routes once MSP012 / MSP013 land.
 

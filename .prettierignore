@@ -2,4 +2,3 @@ dist/
 cdk.out/
 node_modules/
 coverage/
-*.md
