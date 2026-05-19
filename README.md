@@ -9,36 +9,24 @@ The HTTP contract for callers lives in [`CONTRACT.md`](./CONTRACT.md); the backl
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Client[" "]
-        iOS["iOS app<br/>(MacroScape)"]
-    end
+flowchart TD
+    iOS["iOS app<br/>(MacroScape)"]
 
     subgraph AWS["AWS · us-west-2"]
-        direction TB
-        APIGW["API Gateway<br/>api.macroscape.app"]
-        Lambda["Lambda<br/>handler"]
-        DDB[("DynamoDB<br/>users · daily counters")]
-        Secrets[("Secrets Manager<br/>upstream API keys")]
-        APIGW --> Lambda
-        Lambda <--> DDB
-        Lambda -- "GetSecretValue" --> Secrets
+        direction LR
+        APIGW["API Gateway<br/>api.macroscape.app"] --> Lambda["Lambda<br/>handler"]
+        Lambda <--> DDB[("DynamoDB<br/>users · daily counters")]
+        Lambda -- "GetSecretValue" --> Secrets[("Secrets Manager<br/>upstream API keys")]
     end
 
-    subgraph External[" "]
-        direction TB
-        Apple["Apple JWKS<br/>appleid.apple.com"]
-        Anthropic["Anthropic<br/>api.anthropic.com"]
-        USDA["USDA FDC<br/>api.nal.usda.gov"]
-    end
+    Apple["Apple JWKS<br/>appleid.apple.com"]
+    Anthropic["Anthropic<br/>api.anthropic.com"]
+    USDA["USDA FDC<br/>api.nal.usda.gov"]
 
     iOS -- "Bearer id_token" --> APIGW
     Lambda -- "verify JWKS<br/>(cached)" --> Apple
     Lambda -- "x-api-key" --> Anthropic
     Lambda -- "api_key=…" --> USDA
-
-    style Client fill:transparent,stroke:transparent
-    style External fill:transparent,stroke:transparent
 ```
 
 Two CDK stacks in `bin/macroscape-proxy.ts`:
