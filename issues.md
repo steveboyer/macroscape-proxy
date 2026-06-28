@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP044** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP045** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -66,6 +66,26 @@ remain stable.
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP044** — Bug: USDA 403 (invalid/unconfigured key) was reported to iOS as a rate limit.
+
+      The iOS app surfaced "USDA hit rate limit" on the very first food search. Root cause was in
+      `src/upstream/usda.ts`: the error mapper treated `response.status === 403` as rate limiting
+      (`isRateLimit = status === 429 || status === 403`), so it returned `429 upstream_rate_limited`.
+      But api.data.gov uses **429** (`OVER_RATE_LIMIT`) for throttling and **403** for API-*key*
+      problems (`API_KEY_INVALID` / `API_KEY_MISSING` / `API_KEY_DISABLED` / …). The proxy's
+      `macroscape-proxy/usda-api-key` secret had never been populated with a real key (CDK seeds it
+      with a random placeholder), so USDA returned 403 on every request and the proxy mislabeled it.
+
+      Fix: classify the failure by api.data.gov's error code. `429`/`OVER_RATE_LIMIT` →
+      `429 upstream_rate_limited`; `403`/`API_KEY_*` → `503 upstream_not_configured` (iOS maps this to
+      `SearchError.proxyNotConfigured`); everything else → `upstream_error` with the status preserved.
+      Added `extractUsdaErrorCode()` to read the code from both USDA error shapes
+      (`{ error: { code } }` and `{ error: "STRING" }`), and `sanitizeUsdaError()` now takes the
+      envelope kind directly instead of a boolean. CONTRACT.md updated (non-2xx classification, error
+      table, client-mapping bullets). The operational other half — populating a real api.data.gov key
+      — is done out-of-band via `aws secretsmanager put-secret-value` + a redeploy to flush the
+      module-scoped key cache. iOS-side error wording fixed separately in the app repo (MS124).
 
 - [x] **MSP036** — Enable branch protection on `main`.
 
