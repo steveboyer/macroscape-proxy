@@ -167,12 +167,18 @@ Never pass through a stale or test API key.
 **Response (2xx):** USDA's response, byte-for-byte (status + `content-type` + body). USDA's response
 shape (`foods[].fdcId`, `description`, `dataType`, `foodNutrients[]…`) is unchanged.
 
-**Response (non-2xx from USDA):** Sanitized to a known envelope. USDA's 429 (over-quota) and 403
-(DEMO_KEY exhausted) both map to
-`429 { error: "upstream_rate_limited", upstream: { type, message } }` — distinct from the proxy's
-own `daily_limit_exceeded` 429 (which signals the per-user proxy quota was hit). Other non-2xx pass
-through as `{ error: "upstream_error", upstream: { type, message } }` with USDA's status code
-preserved.
+**Response (non-2xx from USDA):** Sanitized to a known envelope, classified by api.data.gov's
+conventions:
+
+- **429** (or error code `OVER_RATE_LIMIT`) →
+  `429 { error: "upstream_rate_limited", upstream: { type, message } }` — distinct from the proxy's
+  own `daily_limit_exceeded` 429 (which signals the per-user proxy quota was hit).
+- **403** (or error code `API_KEY_*`: `API_KEY_INVALID` / `API_KEY_MISSING` / `API_KEY_DISABLED` /
+  …) → `503 { error: "upstream_not_configured", upstream: { type, message } }`. A 403 from
+  api.data.gov is an API-_key_ problem, not a rate limit — the operator must populate a valid
+  `macroscape-proxy/usda-api-key`.
+- Any other non-2xx → `{ error: "upstream_error", upstream: { type, message } }` with USDA's status
+  code preserved.
 
 ## Error responses
 
@@ -194,8 +200,8 @@ All proxy-originated error responses have a JSON body of the form:
 | 404     | `not_found`               | Unknown route                                                            | `path`                                         |
 | 405     | `method_not_allowed`      | Wrong HTTP method (e.g., `GET /v1/anthropic/messages`)                   | —                                              |
 | 429     | `daily_limit_exceeded`    | User hit their daily request limit on the proxy itself                   | `scope`, `group`, `limit`, `count`, `resetsAt` |
-| 429     | `upstream_rate_limited`   | USDA returned 429 (over-quota) or 403 (DEMO_KEY exhausted)               | `upstream` (type, message)                     |
-| 503     | `upstream_not_configured` | Proxy's upstream API key isn't populated in Secrets Manager (transient)  | —                                              |
+| 429     | `upstream_rate_limited`   | USDA returned 429 / `OVER_RATE_LIMIT` (over-quota)                       | `upstream` (type, message)                     |
+| 503     | `upstream_not_configured` | Upstream key not populated in Secrets Manager, or USDA 403 `API_KEY_*`   | `upstream` (type, message) for the USDA case   |
 | 4xx/5xx | `upstream_error`          | Upstream returned non-2xx (other than rate-limit); status forwarded      | `upstream` (type, message)                     |
 | 500     | (none)                    | Unexpected internal error; Lambda default response (not this JSON shape) | —                                              |
 
@@ -204,10 +210,10 @@ The recommended client mapping:
 - **401** of any kind → re-auth via Sign in with Apple and retry once
 - **429 `daily_limit_exceeded`** → respect `Retry-After`; surface `resetsAt` in UI; this is the
   proxy throttling the user
-- **429 `upstream_rate_limited`** → the upstream provider is throttling (DEMO_KEY exhaustion or
-  genuine over-quota); back off and retry, surface as a distinct UI message from the proxy's own
-  quota
-- **503 `upstream_not_configured`** → brief backoff and retry (transient during proxy rollout)
+- **429 `upstream_rate_limited`** → the upstream provider is throttling (genuine over-quota); back
+  off and retry, surface as a distinct UI message from the proxy's own quota
+- **503 `upstream_not_configured`** → brief backoff and retry; usually transient during proxy
+  rollout, but a persistent 503 means the upstream API key is missing or invalid (operator action)
 - **5xx other** → standard backoff with jitter
 - **4xx other** → user-facing error, no retry
 

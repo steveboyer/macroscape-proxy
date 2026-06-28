@@ -55,27 +55,63 @@ export async function proxyFoodsSearch(
     };
   }
 
-  // USDA returns 429 for over-quota, 403 for DEMO_KEY exhaustion. Both
-  // map to `upstream_rate_limited` so iOS can keep its
-  // SearchError.rateLimited distinction (vs auth-401).
-  const isRateLimit = response.status === 429 || response.status === 403;
+  // Classify the failure by api.data.gov's conventions. Rate limiting is
+  // HTTP 429 (`OVER_RATE_LIMIT`). HTTP 403 is an API-*key* problem
+  // (`API_KEY_INVALID` / `API_KEY_MISSING` / `API_KEY_DISABLED` / …) — a
+  // proxy misconfiguration, NOT a rate limit. Conflating the two reported
+  // an unconfigured key to iOS as `upstream_rate_limited`, producing a
+  // bogus "rate limit" message that tripped on the very first search. Map
+  // key problems to 503 `upstream_not_configured` (iOS →
+  // SearchError.proxyNotConfigured) so the real cause is visible; the fix
+  // is operational (populate `macroscape-proxy/usda-api-key`).
+  const usdaErrorCode = extractUsdaErrorCode(rawBody);
+  const isRateLimit = response.status === 429 || usdaErrorCode === 'OVER_RATE_LIMIT';
+  const isKeyProblem = response.status === 403 || (usdaErrorCode?.startsWith('API_KEY_') ?? false);
+
+  const envelope: SanitizedUsdaError['error'] = isRateLimit
+    ? 'upstream_rate_limited'
+    : isKeyProblem
+      ? 'upstream_not_configured'
+      : 'upstream_error';
+  const statusCode = isRateLimit ? 429 : isKeyProblem ? 503 : response.status;
   return {
-    statusCode: isRateLimit ? 429 : response.status,
+    statusCode,
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(sanitizeUsdaError(rawBody, isRateLimit)),
+    body: JSON.stringify(sanitizeUsdaError(rawBody, envelope)),
   };
 }
 
+// Pulls api.data.gov's machine-readable error code out of either response
+// shape: `{ error: { code, message } }` or `{ error: "STRING" }`.
+function extractUsdaErrorCode(rawBody: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (parsed && typeof parsed === 'object') {
+      const errField = (parsed as { error?: unknown }).error;
+      if (errField && typeof errField === 'object') {
+        const code = (errField as { code?: unknown }).code;
+        return typeof code === 'string' ? code : undefined;
+      }
+      if (typeof errField === 'string') return errField;
+    }
+  } catch {
+    // Non-JSON body — no code to extract.
+  }
+  return undefined;
+}
+
 interface SanitizedUsdaError {
-  error: 'upstream_error' | 'upstream_rate_limited';
+  error: 'upstream_error' | 'upstream_rate_limited' | 'upstream_not_configured';
   upstream: {
     type: string;
     message: string;
   };
 }
 
-function sanitizeUsdaError(rawBody: string, isRateLimit: boolean): SanitizedUsdaError {
-  const envelope = isRateLimit ? 'upstream_rate_limited' : 'upstream_error';
+function sanitizeUsdaError(
+  rawBody: string,
+  envelope: SanitizedUsdaError['error'],
+): SanitizedUsdaError {
   try {
     const parsed: unknown = JSON.parse(rawBody);
     if (parsed && typeof parsed === 'object') {
