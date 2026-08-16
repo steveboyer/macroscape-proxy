@@ -265,6 +265,12 @@ them to change:
   streaming, file an issue before depending on `/v1/anthropic/messages` for streaming calls.
 - **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy
   to add when requested.
+- **Models listing** (`GET /v1/anthropic/models`) — planned under MSP045, **not implemented; do not
+  code against this route yet.** Forwards to Anthropic's Models API so a client holding no Anthropic
+  key can discover available models. Note its response paginates with `after_id` / `before_id` and
+  returns `has_more` / `first_id` / `last_id`, unlike the `page` / `next_page` scheme used elsewhere
+  in this contract — the plan is to forward Anthropic's shape unchanged rather than normalize it.
+  Until it ships, clients must hard-code their model list.
 - **Proxy session tokens** (`POST /v1/auth/session`, `/v1/auth/refresh`, `/v1/auth/logout`) —
   planned under MSP044, **not implemented; do not code against these routes yet.** The
   Authentication section above states that the client refreshes the Apple `id_token` via the iOS

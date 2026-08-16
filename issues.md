@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP045** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP046** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -78,6 +78,50 @@ remain stable.
       plan tiers ([[MSP026]]).
 
 ### Forwarding
+
+- [ ] **MSP045** — Add `GET /v1/anthropic/models`, forwarding to Anthropic's Models API. **Blocks
+      macroscape MS131** (auto-discover available Claude models instead of the hardcoded picker
+      list) — that item has been waiting on this route since MS130, and both MS130 and MS131 already
+      name MSP045 as the ID, so this is a promise being kept rather than a new proposal.
+
+      **Why the proxy has to do it.** In proxy mode the app holds no Anthropic key — only an Apple
+      Bearer token — so it cannot call `api.anthropic.com/v1/models` itself. Without this route the
+      picker stays hand-maintained, and a newly released Claude model needs an App Store release to
+      appear.
+
+      **Shape.** `GET /v1/anthropic/models` → `https://api.anthropic.com/v1/models`, following the
+      existing `/v1/<upstream-provider>/<endpoint>` convention. Same auth as every other route
+      (Apple Bearer today, MSP044 session token once that lands). Response forwarded **byte-for-byte**
+      — the proxy does no filtering, sorting, or reshaping; the client decides what to show. Non-2xx
+      sanitized into the standard `upstream_error` envelope like the other routes.
+
+      - **Query params** — strict allowlist, as with USDA: `limit`, `after_id`, `before_id`. Note
+        the Models API paginates with `after_id` / `before_id` and returns `has_more` / `first_id` /
+        `last_id` — **not** the `page` / `next_page` cursor scheme used elsewhere. Don't normalize
+        it to match; the client is coded against Anthropic's shape.
+      - **Request headers forwarded** — `anthropic-version` (required), `accept`,
+        `accept-encoding`. No `anthropic-beta`: the Models API is GA and takes no beta header. The
+        caller's `Authorization` is dropped and the proxy's own `x-api-key` attached, exactly as on
+        `/v1/anthropic/messages`.
+      - **Rate limiting** — should not count against the user's daily upstream quota. A model-list
+        fetch is not an AI call, and the client caches the result in UserDefaults, so charging it
+        would let an app launch burn part of the user's budget. Give it its own looser counter, same
+        reasoning as MSP044's auth routes.
+      - **Caching** — the model list changes rarely. Cache the upstream response at module scope
+        with a short TTL, the way JWKS is already cached in the Lambda container, so a cold start
+        pays one fetch and warm invocations pay none.
+
+      **Response fields the client depends on** (verified against the Anthropic API reference,
+      2026-08-16): each entry in `data[]` carries `id`, `display_name`, `created_at`, and a
+      `capabilities` tree. MS131 filters on `capabilities.image_input.supported` (MacroScape's
+      food-photo flow is vision-only) and sorts newest-first by `created_at`. There is no
+      `context_window` field — the context window is `max_input_tokens`, and `max_tokens` is the
+      output cap. The Models API returns **no pricing**, so `ModelPricing.table` in the app stays
+      hand-maintained regardless; a discovered model with no pricing entry simply shows usage with
+      no cost figure.
+
+      Out of scope: `GET /v1/anthropic/models/{id}` (retrieve) — the client only needs the list;
+      add it if a caller ever wants live capability lookup for one model.
 
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If
       not, mark this complete with a note that streaming was not needed.
