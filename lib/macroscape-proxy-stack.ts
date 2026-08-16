@@ -48,6 +48,19 @@ export class MacroScapeProxyStack extends cdk.Stack {
       description: 'USDA FoodData Central API key',
     });
 
+    // HMAC key for proxy-issued access tokens (MSP044). Generated rather than
+    // left empty like the upstream keys — there's no external value to paste
+    // in, and a hand-typed one would be weaker than this. Rotation replaces
+    // the value with the two-key JSON shape documented in src/auth/sessionKeys.ts.
+    const sessionSigningKey = new secretsmanager.Secret(this, 'SessionSigningKey', {
+      secretName: 'macroscape-proxy/session-signing-key',
+      description: 'HMAC key for proxy-issued session access tokens',
+      generateSecretString: {
+        passwordLength: 64,
+        excludePunctuation: true,
+      },
+    });
+
     // Explicit log group so we control retention. Without this the Lambda
     // creates a log group with indefinite retention by default.
     const handlerLogGroup = new logs.LogGroup(this, 'HandlerLogGroup', {
@@ -68,8 +81,17 @@ export class MacroScapeProxyStack extends cdk.Stack {
         UPSTREAM_SECRET_ARN: upstreamApiKey.secretArn,
         APPLE_SIGNIN_SECRET_ARN: appleSignInPrivateKey.secretArn,
         USDA_SECRET_ARN: usdaApiKey.secretArn,
+        SESSION_SECRET_ARN: sessionSigningKey.secretArn,
         APPLE_AUD: 'app.macroscape.MacroScape',
+        // Access tokens are short-lived because they can't be revoked before
+        // expiry — logout kills the refresh token, but an already-issued
+        // access token stays valid until it ages out. One hour is the bound.
+        ACCESS_TOKEN_TTL_SECONDS: '3600',
+        REFRESH_TOKEN_TTL_DAYS: '90',
         DEFAULT_DAILY_LIMIT: '100',
+        // /v1/auth/* is off the shared total (a refresh isn't an AI call);
+        // src/handler.ts carries a fallback of 200 if this is ever unset.
+        DEFAULT_DAILY_LIMIT_AUTH: '200',
         // /v1/anthropic/models is off the shared total counter (it isn't an
         // AI call), so this is the only bound on it. src/handler.ts carries a
         // fallback of 50 if this is ever unset.
@@ -97,6 +119,7 @@ export class MacroScapeProxyStack extends cdk.Stack {
           upstreamApiKey.secretArn,
           appleSignInPrivateKey.secretArn,
           usdaApiKey.secretArn,
+          sessionSigningKey.secretArn,
         ],
       }),
     );

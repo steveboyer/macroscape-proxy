@@ -34,19 +34,50 @@ Routes that don't forward to a third-party upstream don't follow this pattern �
 
 ## Authentication
 
-All endpoints require **Sign in with Apple**. The client sends Apple's id_token in every request:
+All endpoints require a bearer token:
 
 ```
-Authorization: Bearer <id_token>
+Authorization: Bearer <proxy_access_token>
 ```
 
-The id_token is obtained on iOS via `ASAuthorizationAppleIDCredential.identityToken` after a
-successful Sign in with Apple flow. Apple id_tokens have a ~10-minute TTL; the client refreshes via
-the iOS framework, not via the proxy.
+The access token is **issued by the proxy**, not by Apple. The client signs in with Apple once,
+exchanges the resulting `id_token` for a session at `POST /v1/auth/session`, and from then on uses
+the proxy's access token — refreshing it over HTTP at `POST /v1/auth/refresh` with no further Apple
+interaction. See [Session endpoints](#session-endpoints) for the full flow.
 
-### JWT verification
+> **Why the proxy issues its own token.** An earlier version of this contract said the client sends
+> Apple's `id_token` on every request and "refreshes via the iOS framework". That is not possible:
+> Apple's `id_token` lives ~10 minutes and iOS has no API to silently re-mint one
+> (`ASAuthorizationController.performRequests()` always runs the interactive flow, and
+> `credentialState(forUserID:)` returns authorization state, not a token). The id_token is an
+> authentication assertion for the moment of sign-in, not a credential for ongoing API calls, and
+> using it as one forced a Sign in with Apple sheet roughly every ten minutes. MSP044 replaced it
+> with the exchange described below.
 
-Every id_token is verified before the request is processed:
+**Transitional:** the upstream-forwarding routes and `/health` still accept a raw Apple `id_token`
+in `Authorization` for one release, so a client that hasn't adopted sessions keeps working. The
+proxy picks the verifier by the token's `iss` claim. This path will be removed once the iOS client
+has shipped session support (macroscape MS154) — new clients should not use it.
+
+### Token verification
+
+Proxy access tokens are HS256 JWTs verified against a signing key held in Secrets Manager:
+
+| Check       | Required value                                                     |
+| ----------- | ------------------------------------------------------------------ |
+| Signature   | HMAC-SHA256 against the key named by the token's `kid` header      |
+| `iss` claim | `https://api.macroscape.app`                                       |
+| `aud` claim | `macroscape-proxy`                                                 |
+| `exp` claim | Must be in the future (tokens live 1 hour)                         |
+| `sub` claim | The Apple `sub` — unchanged, so `userId` is stable across the swap |
+
+The `kid` header exists so two signing keys can be live at once during rotation; a token naming an
+unknown `kid` is rejected as `invalid_signature` rather than tried against every key.
+
+### Apple id_token verification (transitional path)
+
+An Apple `id_token` presented directly is verified before the request is processed. This is also
+exactly what `POST /v1/auth/session` does with the token in its body:
 
 | Check       | Required value                                            |
 | ----------- | --------------------------------------------------------- |
@@ -60,6 +91,85 @@ JWKS is fetched from `https://appleid.apple.com/auth/keys` and cached in the Lam
 starts pay one HTTPS fetch.
 
 ## Endpoints
+
+## Session endpoints
+
+Three routes manage the session lifecycle. Like `/health`, they don't forward to a third-party
+upstream, so they sit outside the `/v1/<upstream>/<endpoint>` convention. All three take a JSON body
+and require no `Authorization` header — the credential is _in_ the body.
+
+**Rate-limited on their own `auth` counter**, off the shared daily total: a token refresh isn't an
+AI call, and charging it would let background refreshes spend the user's upstream budget.
+
+### `POST /v1/auth/session`
+
+Exchanges an Apple `id_token` for a proxy session. Call this once, after Sign in with Apple.
+
+**Request:**
+
+```json
+{ "appleIdToken": "<Apple identityToken>" }
+```
+
+**Response (200):**
+
+```json
+{
+  "accessToken": "<proxy JWT>",
+  "accessExpiresIn": 3600,
+  "refreshToken": "<opaque string>",
+  "refreshExpiresIn": 7776000
+}
+```
+
+`*ExpiresIn` values are seconds. The Apple token is verified exactly as documented above; a bad one
+returns the same 401 reasons (`expired`, `invalid_signature`, …). The user record is created on
+first call, so a separate `/health` call is not required to provision one.
+
+### `POST /v1/auth/refresh`
+
+Exchanges a refresh token for a new pair. **Refresh tokens are single-use** — each redeem consumes
+the presented token and returns a new one; store the new one before discarding the old.
+
+**Request:**
+
+```json
+{ "refreshToken": "<opaque string>" }
+```
+
+**Response (200):** identical shape to `/v1/auth/session`.
+
+**Reuse detection.** Presenting an already-consumed token returns
+`401 { "error": "refresh_token_reused" }` **and revokes every outstanding refresh token for that
+user**. A replay is either a client retrying against a stale copy or a stolen token racing the real
+client; the proxy can't tell those apart, so it invalidates the chain and forces a fresh Sign in
+with Apple. Clients must therefore persist the rotated token durably before using it — a client that
+loses the new token and retries with the old one will sign the user out.
+
+A token that predates a revocation returns `401 { "error": "invalid_refresh_token" }` instead, and
+does **not** trigger another revocation.
+
+### `POST /v1/auth/logout`
+
+Consumes the presented refresh token.
+
+**Request:**
+
+```json
+{ "refreshToken": "<opaque string>" }
+```
+
+**Response (200):** `{ "ok": true }`
+
+Idempotent — logging out an unknown or already-consumed token is a success, so a client can retry a
+failed logout without special-casing 401.
+
+> ⚠️ **Access tokens are not revoked by logout.** They're stateless and carry no server-side
+> validity check, so an already-issued access token keeps working until its `exp` (≤ 1 hour). This
+> is the deliberate trade for not doing a database read on every proxied request. Logout stops the
+> session from being _extended_, not from finishing its current hour. If instant kill becomes a
+> requirement, that needs a denylist keyed by `jti` — file an issue rather than shortening the TTL,
+> which would just multiply refresh traffic.
 
 ### `GET /health`
 
@@ -234,26 +344,33 @@ All proxy-originated error responses have a JSON body of the form:
 { "error": "<reason>", "...optional fields": "..." }
 ```
 
-| Status  | `error`                   | When                                                                     | Extra fields                                   |
-| ------- | ------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
-| 401     | `missing_bearer_token`    | No `Authorization` header, or doesn't match `Bearer <token>`             | —                                              |
-| 401     | `expired`                 | id_token's `exp` is in the past                                          | —                                              |
-| 401     | `invalid_signature`       | id_token signature doesn't verify against Apple's JWKS                   | —                                              |
-| 401     | `invalid_issuer`          | id_token's `iss` is not `https://appleid.apple.com`                      | —                                              |
-| 401     | `invalid_audience`        | id_token's `aud` is not `app.macroscape.MacroScape`                      | —                                              |
-| 401     | `malformed`               | Token isn't a parseable JWT, or `sub` is missing                         | —                                              |
-| 401     | `jwks_fetch_failed`       | Proxy couldn't fetch Apple's JWKS (transient)                            | —                                              |
-| 404     | `not_found`               | Unknown route                                                            | `path`                                         |
-| 405     | `method_not_allowed`      | Wrong HTTP method (e.g., `GET /v1/anthropic/messages`)                   | —                                              |
-| 429     | `daily_limit_exceeded`    | User hit their daily request limit on the proxy itself                   | `scope`, `group`, `limit`, `count`, `resetsAt` |
-| 429     | `upstream_rate_limited`   | USDA returned 429 / `OVER_RATE_LIMIT` (over-quota)                       | `upstream` (type, message)                     |
-| 503     | `upstream_not_configured` | Upstream key not populated in Secrets Manager, or USDA 403 `API_KEY_*`   | `upstream` (type, message) for the USDA case   |
-| 4xx/5xx | `upstream_error`          | Upstream returned non-2xx (other than rate-limit); status forwarded      | `upstream` (type, message)                     |
-| 500     | (none)                    | Unexpected internal error; Lambda default response (not this JSON shape) | —                                              |
+| Status  | `error`                   | When                                                                        | Extra fields                                   |
+| ------- | ------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------- |
+| 401     | `missing_bearer_token`    | No `Authorization` header, or doesn't match `Bearer <token>`                | —                                              |
+| 401     | `expired`                 | id_token's `exp` is in the past                                             | —                                              |
+| 401     | `invalid_signature`       | id_token signature doesn't verify against Apple's JWKS                      | —                                              |
+| 401     | `invalid_issuer`          | id_token's `iss` is not `https://appleid.apple.com`                         | —                                              |
+| 401     | `invalid_audience`        | id_token's `aud` is not `app.macroscape.MacroScape`                         | —                                              |
+| 401     | `malformed`               | Token isn't a parseable JWT, or `sub` is missing                            | —                                              |
+| 401     | `jwks_fetch_failed`       | Proxy couldn't fetch Apple's JWKS (transient)                               | —                                              |
+| 401     | `invalid_refresh_token`   | Refresh token unknown, expired, or predates a chain revocation              | —                                              |
+| 401     | `refresh_token_reused`    | Consumed refresh token replayed; **the user's whole chain is revoked**      | —                                              |
+| 400     | `invalid_request`         | Malformed JSON body, or a required field is missing on a `/v1/auth/*` route | —                                              |
+| 404     | `not_found`               | Unknown route                                                               | `path`                                         |
+| 405     | `method_not_allowed`      | Wrong HTTP method (e.g., `GET /v1/anthropic/messages`)                      | —                                              |
+| 429     | `daily_limit_exceeded`    | User hit their daily request limit on the proxy itself                      | `scope`, `group`, `limit`, `count`, `resetsAt` |
+| 429     | `upstream_rate_limited`   | USDA returned 429 / `OVER_RATE_LIMIT` (over-quota)                          | `upstream` (type, message)                     |
+| 503     | `upstream_not_configured` | Upstream key not populated in Secrets Manager, or USDA 403 `API_KEY_*`      | `upstream` (type, message) for the USDA case   |
+| 4xx/5xx | `upstream_error`          | Upstream returned non-2xx (other than rate-limit); status forwarded         | `upstream` (type, message)                     |
+| 500     | (none)                    | Unexpected internal error; Lambda default response (not this JSON shape)    | —                                              |
 
 The recommended client mapping:
 
-- **401** of any kind → re-auth via Sign in with Apple and retry once
+- **401 on a proxied route** → refresh the access token at `/v1/auth/refresh` and retry once; only
+  fall back to Sign in with Apple if the refresh itself fails
+- **401 `invalid_refresh_token` / `refresh_token_reused`** → the session is gone; discard the stored
+  refresh token and prompt for Sign in with Apple
+- **401** of any other kind → re-auth via Sign in with Apple and retry once
 - **429 `daily_limit_exceeded`** → respect `Retry-After`; surface `resetsAt` in UI; this is the
   proxy throttling the user
 - **429 `upstream_rate_limited`** → the upstream provider is throttling (genuine over-quota); back
@@ -265,8 +382,8 @@ The recommended client mapping:
 
 ## Rate limiting
 
-Rate-limited endpoints are `POST /v1/anthropic/messages`, `GET /v1/usda/foods/search`, and
-`GET /v1/anthropic/models`. `/health` is **not** rate-limited.
+Rate-limited endpoints are `POST /v1/anthropic/messages`, `GET /v1/usda/foods/search`,
+`GET /v1/anthropic/models`, and the three `/v1/auth/*` routes. `/health` is **not** rate-limited.
 
 The proxy tracks **two counters per user per UTC day**:
 
@@ -280,11 +397,13 @@ The proxy tracks **two counters per user per UTC day**:
   attribute is set (e.g., `DEFAULT_DAILY_LIMIT_USDA=500`, `dailyLimitUsda=500`). Currently only the
   `models` group is enforced (`50/day`); for `anthropic` and `usda` the total is the binding limit.
 
-**Routes off the total counter.** `GET /v1/anthropic/models` increments only its own `models` group
-counter, not the total. A model-list fetch isn't an AI call and the client caches the result, so
-charging it would let an app launch spend part of the user's daily budget. Its group limit
-(`50/day`) is what bounds it — a 429 from that route carries `"scope": "group"`,
-`"group": "models"`.
+**Routes off the total counter.** `GET /v1/anthropic/models` and the `/v1/auth/*` routes increment
+only their own group counter (`models`, `auth`), not the total. Neither is an AI call, and charging
+them would let an app launch or a background token refresh spend part of the user's daily budget.
+Their group limits (`50/day` and `200/day`) are what bound them — a 429 from those routes carries
+`"scope": "group"` with `"group": "models"` or `"group": "auth"`. The `auth` limit is generous
+because one device refreshing hourly costs ~24/day; it exists to bound the surface, not to shape
+normal use.
 
 Counted regardless of upstream outcome — upstream errors, 5xx responses, etc. still consume quota.
 
@@ -320,12 +439,10 @@ them to change:
 - **Model retrieve** (`GET /v1/anthropic/models/{id}`) — not implemented. The list route
   (`GET /v1/anthropic/models`, shipped under MSP045) is enough for current clients; file an issue if
   live capability lookup for a single model is needed.
-- **Proxy session tokens** (`POST /v1/auth/session`, `/v1/auth/refresh`, `/v1/auth/logout`) —
-  planned under MSP044, **not implemented; do not code against these routes yet.** The
-  Authentication section above states that the client refreshes the Apple `id_token` via the iOS
-  framework. That is wrong: iOS has no silent re-mint API (`performRequests()` is always
-  interactive, and `credentialState(forUserID:)` returns state, not a token), so an
-  id_token-as-bearer design forces a Sign in with Apple sheet roughly every 10 minutes. MSP044
-  replaces it with a one-time exchange of the Apple assertion for a proxy-issued access token (~1h)
-  plus a rotating refresh token. Until it ships, `Authorization: Bearer <apple_id_token>` remains
-  the only accepted credential.
+- **Access-token revocation before expiry** — logout consumes the refresh token but an
+  already-issued access token stays valid until its `exp` (≤ 1 hour). Instant kill needs a `jti`
+  denylist checked per request; not built, since it trades a database read on every proxied call for
+  a one-hour window. File an issue if a use case needs it.
+- **Apple `id_token` as a direct bearer credential** — still accepted on the proxied routes and
+  `/health` for one release so pre-session clients keep working (see Authentication). Slated for
+  removal once macroscape MS154 has shipped and been verified in the field.
