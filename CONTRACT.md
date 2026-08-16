@@ -265,3 +265,12 @@ them to change:
   streaming, file an issue before depending on `/v1/anthropic/messages` for streaming calls.
 - **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy
   to add when requested.
+- **Proxy session tokens** (`POST /v1/auth/session`, `/v1/auth/refresh`, `/v1/auth/logout`) —
+  planned under MSP044, **not implemented; do not code against these routes yet.** The
+  Authentication section above states that the client refreshes the Apple `id_token` via the iOS
+  framework. That is wrong: iOS has no silent re-mint API (`performRequests()` is always
+  interactive, and `credentialState(forUserID:)` returns state, not a token), so an
+  id_token-as-bearer design forces a Sign in with Apple sheet roughly every 10 minutes. MSP044
+  replaces it with a one-time exchange of the Apple assertion for a proxy-issued access token (~1h)
+  plus a rotating refresh token. Until it ships, `Authorization: Bearer <apple_id_token>` remains
+  the only accepted credential.

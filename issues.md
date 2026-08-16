@@ -25,6 +25,58 @@ remain stable.
 
 ### Auth
 
+- [ ] **MSP044** — Issue proxy session tokens instead of using Apple's `id_token` as the bearer
+      credential on every request. **Blocks the iOS proxy cutover** (macroscape MS155) — until this
+      lands, turning the proxy on for real users is worse than the BYOK path it replaces.
+
+      **The bug in the current contract.** CONTRACT.md's Authentication section says "Apple
+      id_tokens have a ~10-minute TTL; the client refreshes via the iOS framework, not via the
+      proxy." iOS has no such API. `ASAuthorizationController.performRequests()` always runs the
+      *interactive* authorization flow — it presents the system sheet. The only silent call is
+      `ASAuthorizationAppleIDProvider.credentialState(forUserID:)`, which returns authorized /
+      revoked / notFound and never a token. So the iOS client (`AppleAuthService.refreshIfPossible`)
+      cannot silently re-mint, and the observed behavior is a sign-in prompt every ~10 minutes of
+      use and on every cold launch, on both the Anthropic and USDA paths. Apple's `id_token` is an
+      authentication assertion for the moment of sign-in, not a bearer credential for ongoing API
+      calls; we're using it as the latter.
+
+      **Design.** Exchange the Apple assertion once, then run on our own credentials:
+
+      - `POST /v1/auth/session` — body `{ appleIdToken }`. Verifies exactly as today (signature
+        against Apple JWKS, `iss`, `aud`, `exp`, non-empty `sub`), creates-or-updates the user
+        record, returns `{ accessToken, accessExpiresIn, refreshToken, refreshExpiresIn }`.
+      - `POST /v1/auth/refresh` — body `{ refreshToken }` → a new access token and a new refresh
+        token. Rotate on every use, single-use, and treat reuse of a spent token as theft: revoke
+        the whole chain for that user.
+      - `POST /v1/auth/logout` — invalidates the presented refresh token.
+      - **Access token**: proxy-signed JWT, ~1h. Set `sub` to the same value the proxy already uses
+        as `userId` (Apple's `sub`) so rate-limit counters, user records, and cost attribution are
+        untouched by this change.
+      - **Refresh token**: opaque random string, *not* a JWT. Store only a hash in DynamoDB
+        alongside userId, expiry, and rotation counter. ~90-day sliding expiry.
+      - Signing key lives in Secrets Manager next to the upstream keys; include a rotation path
+        (publish `kid` in the access token header so two keys can be live at once).
+
+      **Compatibility.** `/v1/<provider>/*` should accept *either* a proxy access token or an Apple
+      `id_token` for one release, so a client that hasn't updated keeps working; drop the Apple path
+      once macroscape MS154 has shipped and been verified. Distinguish the two by issuer rather than
+      by trying both verifiers blindly.
+
+      **Rate limiting.** `/v1/auth/*` must not count against the user's daily upstream quota — a
+      token refresh isn't an AI call, and charging for it would let a background refresh burn the
+      user's budget. Give the auth routes their own (looser) counter to keep them from being a free
+      DoS surface, in the spirit of how `/health` is exempt today.
+
+      **Revocation stays honest.** The client checks `credentialState(forUserID:)` on launch — a
+      silent call needing no token — and drops its session on `.revoked`. Server-side, a user record
+      can also be invalidated directly, which the current design has no way to express since every
+      request carries a fresh Apple assertion.
+
+      New error codes: `401 invalid_refresh_token`, `401 refresh_token_reused` (chain revoked).
+      Update CONTRACT.md's Authentication section when this lands — its "client refreshes via the
+      iOS framework" claim is what encoded the wrong assumption in the first place. Out of scope:
+      plan tiers ([[MSP026]]).
+
 ### Forwarding
 
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If
