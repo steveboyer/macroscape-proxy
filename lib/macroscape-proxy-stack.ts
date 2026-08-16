@@ -70,6 +70,10 @@ export class MacroScapeProxyStack extends cdk.Stack {
         USDA_SECRET_ARN: usdaApiKey.secretArn,
         APPLE_AUD: 'app.macroscape.MacroScape',
         DEFAULT_DAILY_LIMIT: '100',
+        // /v1/anthropic/models is off the shared total counter (it isn't an
+        // AI call), so this is the only bound on it. src/handler.ts carries a
+        // fallback of 50 if this is ever unset.
+        DEFAULT_DAILY_LIMIT_MODELS: '50',
       },
       bundling: {
         minify: true,

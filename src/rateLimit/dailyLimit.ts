@@ -35,8 +35,21 @@ export class RateLimitError extends Error {
 }
 
 export interface UsageResult {
-  total: { count: number; limit: number };
+  total: { count: number; limit: number } | null;
   group: { count: number; limit: number | null };
+}
+
+export interface RateLimitOptions {
+  // When false, the request bumps only its group counter and the shared
+  // total is left alone. For routes that aren't billable upstream work
+  // (`/v1/anthropic/models`) — charging them would let an app launch eat
+  // part of the user's AI budget. Their own group limit is what bounds them.
+  countTowardTotal?: boolean;
+  // Group limit to enforce when neither `DEFAULT_DAILY_LIMIT_<GROUP>` nor the
+  // user's `dailyLimit<Group>` attribute is set. Lets a route that opts out of
+  // the total counter still carry a hard bound in code, rather than leaning on
+  // an env var whose absence would silently remove the only limit it has.
+  fallbackGroupLimit?: number;
 }
 
 // Tracks two counters per request: a per-user total across all endpoints,
@@ -44,16 +57,24 @@ export interface UsageResult {
 // limit is enforced only when `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the
 // user's `dailyLimit<Group>` attribute is set; otherwise the group counter
 // is recorded for observability only.
-export async function checkAndIncrement(appleUserId: string, group: string): Promise<UsageResult> {
-  const limits = await getUserLimits(appleUserId, group);
+export async function checkAndIncrement(
+  appleUserId: string,
+  group: string,
+  options: RateLimitOptions = {},
+): Promise<UsageResult> {
+  const countTowardTotal = options.countTowardTotal ?? true;
+  const limits = await getUserLimits(appleUserId, group, options.fallbackGroupLimit ?? null);
   const now = new Date();
 
   // Rejected requests still bump the counter (no rollback). Intentional —
   // for the rest of the day the user was over the limit anyway, and a
   // rollback would add a second round-trip + race window for no benefit.
-  const totalCount = await incrementTotal(appleUserId, now);
-  if (totalCount > limits.totalLimit) {
-    throw new RateLimitError('total', null, totalCount, limits.totalLimit, now);
+  let totalCount: number | null = null;
+  if (countTowardTotal) {
+    totalCount = await incrementTotal(appleUserId, now);
+    if (totalCount > limits.totalLimit) {
+      throw new RateLimitError('total', null, totalCount, limits.totalLimit, now);
+    }
   }
 
   const groupCount = await incrementGroup(appleUserId, group, now);
@@ -62,7 +83,7 @@ export async function checkAndIncrement(appleUserId: string, group: string): Pro
   }
 
   return {
-    total: { count: totalCount, limit: limits.totalLimit },
+    total: totalCount === null ? null : { count: totalCount, limit: limits.totalLimit },
     group: { count: groupCount, limit: limits.groupLimit },
   };
 }
@@ -72,7 +93,11 @@ interface UserLimits {
   groupLimit: number | null;
 }
 
-async function getUserLimits(appleUserId: string, group: string): Promise<UserLimits> {
+async function getUserLimits(
+  appleUserId: string,
+  group: string,
+  fallbackGroupLimit: number | null,
+): Promise<UserLimits> {
   const groupAttr = `dailyLimit${pascal(group)}`;
   const result = await client.send(
     new GetCommand({
@@ -97,7 +122,7 @@ async function getUserLimits(appleUserId: string, group: string): Promise<UserLi
     groupLimit:
       typeof groupOverride === 'number' && groupOverride > 0
         ? groupOverride
-        : readDefaultGroupLimit(group),
+        : (readDefaultGroupLimit(group) ?? fallbackGroupLimit),
   };
 }
 

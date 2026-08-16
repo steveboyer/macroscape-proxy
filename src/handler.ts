@@ -7,7 +7,7 @@ import { authenticate, AuthError } from './auth/authenticate';
 import { upsertUser } from './db/users';
 import { createRequestLogger, type RequestLogger } from './logging/logger';
 import { checkAndIncrement, RateLimitError } from './rateLimit/dailyLimit';
-import { proxyMessages, UpstreamError } from './upstream/anthropic';
+import { proxyMessages, proxyModels, UpstreamError } from './upstream/anthropic';
 import { proxyFoodsSearch } from './upstream/usda';
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
@@ -38,6 +38,9 @@ async function dispatch(
   // Routes follow the `/v1/<upstream>/<endpoint>` convention (see CONTRACT.md).
   if (path === '/v1/anthropic/messages') {
     return handleAnthropic(event, logger);
+  }
+  if (path === '/v1/anthropic/models') {
+    return handleAnthropicModels(event, logger);
   }
   if (path === '/v1/usda/foods/search') {
     return handleFoodsSearch(event, logger);
@@ -76,6 +79,38 @@ async function handleAnthropic(
       event.isBase64Encoded ?? false,
       logger.requestId,
     );
+    logger.setUpstreamStatus(result.statusCode);
+    return {
+      statusCode: result.statusCode,
+      headers: result.headers,
+      body: result.body,
+    };
+  } catch (err) {
+    return errorResponse(err, logger);
+  }
+}
+
+// A model-list fetch isn't an AI call and the client caches the result, so it
+// gets its own `models` counter and stays off the shared total — otherwise an
+// app launch would spend part of the user's daily AI budget. The fallback keeps
+// the route bounded even with no DEFAULT_DAILY_LIMIT_MODELS configured.
+const MODELS_FALLBACK_DAILY_LIMIT = 50;
+
+async function handleAnthropicModels(
+  event: APIGatewayProxyEventV2,
+  logger: RequestLogger,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  if (event.requestContext.http.method !== 'GET') {
+    return jsonResponse(405, { error: 'method_not_allowed' });
+  }
+  try {
+    const claims = await authenticate(event);
+    logger.setUserId(claims.sub);
+    await checkAndIncrement(claims.sub, 'models', {
+      countTowardTotal: false,
+      fallbackGroupLimit: MODELS_FALLBACK_DAILY_LIMIT,
+    });
+    const result = await proxyModels(event.headers, event.queryStringParameters, logger.requestId);
     logger.setUpstreamStatus(result.statusCode);
     return {
       statusCode: result.statusCode,

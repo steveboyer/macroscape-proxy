@@ -35,7 +35,9 @@ npm run cdk -- deploy MacroScapeProxyStack
 npm run cdk -- deploy MacroScapeProxyGithubOidcStack
 ```
 
-There are no tests yet.
+```sh
+npm test                 # vitest run
+```
 
 ## Architecture
 
@@ -77,9 +79,9 @@ The two stacks are independent — deploy `GithubOidcStack` once per account, de
 Lambda code organized by concern:
 
 - `src/handler.ts` — entry point. Dispatches on `event.rawPath`; routes are `/health`,
-  `POST /v1/anthropic/messages`, `GET /v1/usda/foods/search` (404 otherwise; 405 on wrong method for
-  the proxy routes). Catches `AuthError` / `RateLimitError` / `UpstreamError` and maps them to HTTP
-  responses; other errors propagate to Lambda 500.
+  `POST /v1/anthropic/messages`, `GET /v1/anthropic/models`, `GET /v1/usda/foods/search` (404
+  otherwise; 405 on wrong method for the proxy routes). Catches `AuthError` / `RateLimitError` /
+  `UpstreamError` and maps them to HTTP responses; other errors propagate to Lambda 500.
 - `src/auth/` — Sign in with Apple verification. `appleVerifier.ts` wraps `jose` against Apple's
   JWKS (module-cached, survives warm starts); `authenticate.ts` is the route-level helper (extract
   Bearer token → verify → throw `AuthError(401)` on any failure).
@@ -88,10 +90,14 @@ Lambda code organized by concern:
   `upsertUser` via `attribute_not_exists` conditional).
 - `src/rateLimit/` — `dailyLimit.ts`: atomic `UpdateItem ADD` for the per-user usage counter, throws
   `RateLimitError` (→ 429 + `Retry-After`) on exceed. Reads the per-user `dailyLimit` override or
-  falls back to `DEFAULT_DAILY_LIMIT`.
+  falls back to `DEFAULT_DAILY_LIMIT`. `countTowardTotal: false` opts a route out of the shared
+  total (only `/v1/anthropic/models` does — it isn't an AI call); such routes pass a
+  `fallbackGroupLimit` so they stay bounded without env config.
 - `src/upstream/` — `anthropic.ts`: Secrets-Manager–backed API key fetch (cached after first call),
   strict header allowlist (`content-type`, `anthropic-version`, `anthropic-beta`, `accept`,
-  `accept-encoding`), byte-for-byte request body and response pass-through.
+  `accept-encoding`), byte-for-byte request body and response pass-through. `proxyModels` serves
+  `GET /v1/anthropic/models` from the same key cache with a narrower allowlist and a 5-minute
+  module-scope response cache.
 
 ### `src/` vs `lib/` split
 

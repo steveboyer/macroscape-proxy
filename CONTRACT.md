@@ -143,6 +143,52 @@ message. The status code is still forwarded as-is.
 `anthropic-organization-id`, and rate-limit headers are currently dropped. To request additional
 headers be exposed, file an issue.
 
+### `GET /v1/anthropic/models`
+
+Proxies the request to `https://api.anthropic.com/v1/models` so a client that holds no Anthropic key
+can discover which models are available. Response is forwarded **byte-for-byte** — the proxy does no
+filtering, sorting, or reshaping; the client decides what to show. **Rate-limited on its own counter
+only** (see below) — this does not consume the user's daily AI quota.
+
+**Request:**
+
+```
+GET /v1/anthropic/models?limit=20
+Authorization: Bearer <id_token>
+anthropic-version: 2023-06-01
+```
+
+**Query params forwarded to Anthropic** (strict allowlist; anything else is dropped):
+
+- `limit`
+- `after_id`
+- `before_id`
+
+The Models API paginates with `after_id` / `before_id` and returns `has_more` / `first_id` /
+`last_id` — **not** the `page` / `next_page` scheme used elsewhere. The proxy deliberately does not
+normalize this; code against Anthropic's shape.
+
+**Request headers forwarded to Anthropic** (strict allowlist):
+
+- `anthropic-version` (required by Anthropic)
+- `accept`
+- `accept-encoding`
+
+No `anthropic-beta` — the Models API is GA and takes no beta header. As on `/v1/anthropic/messages`,
+the caller's `Authorization` is dropped and the proxy attaches its own `x-api-key`.
+
+**Response (2xx):** Anthropic's response, byte-for-byte. Each entry in `data[]` carries `id`,
+`display_name`, `created_at`, and a `capabilities` tree. Note there is no `context_window` field —
+the input window is `max_input_tokens` and `max_tokens` is the output cap. The Models API returns
+**no pricing**; clients that display cost must maintain their own pricing table.
+
+**Response (non-2xx from Anthropic):** Same `upstream_error` envelope as `/v1/anthropic/messages`,
+with Anthropic's status code preserved.
+
+**Caching:** Successful responses are cached in the Lambda container for 5 minutes, keyed by
+`anthropic-version` + forwarded query params, so a warm container answers most launches without
+touching upstream. Worst-case staleness for a newly released model is 5 minutes.
+
 ### `GET /v1/usda/foods/search`
 
 Proxies the request to `https://api.nal.usda.gov/fdc/v1/foods/search`. **Rate-limited** (see below).
@@ -219,20 +265,26 @@ The recommended client mapping:
 
 ## Rate limiting
 
-Rate-limited endpoints are `POST /v1/anthropic/messages` and `GET /v1/usda/foods/search`. `/health`
-is **not** rate-limited.
+Rate-limited endpoints are `POST /v1/anthropic/messages`, `GET /v1/usda/foods/search`, and
+`GET /v1/anthropic/models`. `/health` is **not** rate-limited.
 
 The proxy tracks **two counters per user per UTC day**:
 
-- **Total counter** — incremented on every rate-limited request, regardless of endpoint. Enforced
-  against `DEFAULT_DAILY_LIMIT` (currently `100/day`) unless the user's `dailyLimit` attribute
-  overrides it.
-- **Per-upstream-group counter** — incremented on every rate-limited request within an upstream
-  group. Group names match the URL convention's `<upstream-provider>` segment (`anthropic`, `usda`;
-  future: `openai`, etc.). Always tracked for observability. **Enforced** only when a
-  `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>` attribute is set (e.g.,
-  `DEFAULT_DAILY_LIMIT_USDA=500`, `dailyLimitUsda=500`). Currently no per-group enforcement is
-  configured; total-only is the binding limit.
+- **Total counter** — incremented on every request that counts against the user's AI budget,
+  regardless of endpoint. Enforced against `DEFAULT_DAILY_LIMIT` (currently `100/day`) unless the
+  user's `dailyLimit` attribute overrides it.
+- **Per-group counter** — incremented on every rate-limited request within a group. Group names
+  match the URL convention's `<upstream-provider>` segment (`anthropic`, `usda`; future: `openai`,
+  etc.), except for routes carved out of the total (see below). Always tracked for observability.
+  **Enforced** when a `DEFAULT_DAILY_LIMIT_<GROUP>` env var or the user's `dailyLimit<Group>`
+  attribute is set (e.g., `DEFAULT_DAILY_LIMIT_USDA=500`, `dailyLimitUsda=500`). Currently only the
+  `models` group is enforced (`50/day`); for `anthropic` and `usda` the total is the binding limit.
+
+**Routes off the total counter.** `GET /v1/anthropic/models` increments only its own `models` group
+counter, not the total. A model-list fetch isn't an AI call and the client caches the result, so
+charging it would let an app launch spend part of the user's daily budget. Its group limit
+(`50/day`) is what bounds it — a 429 from that route carries `"scope": "group"`,
+`"group": "models"`.
 
 Counted regardless of upstream outcome — upstream errors, 5xx responses, etc. still consume quota.
 
@@ -265,12 +317,9 @@ them to change:
   streaming, file an issue before depending on `/v1/anthropic/messages` for streaming calls.
 - **Additional response headers** — Anthropic's `request-id` and rate-limit hints are dropped. Easy
   to add when requested.
-- **Models listing** (`GET /v1/anthropic/models`) — planned under MSP045, **not implemented; do not
-  code against this route yet.** Forwards to Anthropic's Models API so a client holding no Anthropic
-  key can discover available models. Note its response paginates with `after_id` / `before_id` and
-  returns `has_more` / `first_id` / `last_id`, unlike the `page` / `next_page` scheme used elsewhere
-  in this contract — the plan is to forward Anthropic's shape unchanged rather than normalize it.
-  Until it ships, clients must hard-code their model list.
+- **Model retrieve** (`GET /v1/anthropic/models/{id}`) — not implemented. The list route
+  (`GET /v1/anthropic/models`, shipped under MSP045) is enough for current clients; file an issue if
+  live capability lookup for a single model is needed.
 - **Proxy session tokens** (`POST /v1/auth/session`, `/v1/auth/refresh`, `/v1/auth/logout`) —
   planned under MSP044, **not implemented; do not code against these routes yet.** The
   Authentication section above states that the client refreshes the Apple `id_token` via the iOS

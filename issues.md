@@ -79,50 +79,6 @@ remain stable.
 
 ### Forwarding
 
-- [ ] **MSP045** — Add `GET /v1/anthropic/models`, forwarding to Anthropic's Models API. **Blocks
-      macroscape MS131** (auto-discover available Claude models instead of the hardcoded picker
-      list) — that item has been waiting on this route since MS130, and both MS130 and MS131 already
-      name MSP045 as the ID, so this is a promise being kept rather than a new proposal.
-
-      **Why the proxy has to do it.** In proxy mode the app holds no Anthropic key — only an Apple
-      Bearer token — so it cannot call `api.anthropic.com/v1/models` itself. Without this route the
-      picker stays hand-maintained, and a newly released Claude model needs an App Store release to
-      appear.
-
-      **Shape.** `GET /v1/anthropic/models` → `https://api.anthropic.com/v1/models`, following the
-      existing `/v1/<upstream-provider>/<endpoint>` convention. Same auth as every other route
-      (Apple Bearer today, MSP044 session token once that lands). Response forwarded **byte-for-byte**
-      — the proxy does no filtering, sorting, or reshaping; the client decides what to show. Non-2xx
-      sanitized into the standard `upstream_error` envelope like the other routes.
-
-      - **Query params** — strict allowlist, as with USDA: `limit`, `after_id`, `before_id`. Note
-        the Models API paginates with `after_id` / `before_id` and returns `has_more` / `first_id` /
-        `last_id` — **not** the `page` / `next_page` cursor scheme used elsewhere. Don't normalize
-        it to match; the client is coded against Anthropic's shape.
-      - **Request headers forwarded** — `anthropic-version` (required), `accept`,
-        `accept-encoding`. No `anthropic-beta`: the Models API is GA and takes no beta header. The
-        caller's `Authorization` is dropped and the proxy's own `x-api-key` attached, exactly as on
-        `/v1/anthropic/messages`.
-      - **Rate limiting** — should not count against the user's daily upstream quota. A model-list
-        fetch is not an AI call, and the client caches the result in UserDefaults, so charging it
-        would let an app launch burn part of the user's budget. Give it its own looser counter, same
-        reasoning as MSP044's auth routes.
-      - **Caching** — the model list changes rarely. Cache the upstream response at module scope
-        with a short TTL, the way JWKS is already cached in the Lambda container, so a cold start
-        pays one fetch and warm invocations pay none.
-
-      **Response fields the client depends on** (verified against the Anthropic API reference,
-      2026-08-16): each entry in `data[]` carries `id`, `display_name`, `created_at`, and a
-      `capabilities` tree. MS131 filters on `capabilities.image_input.supported` (MacroScape's
-      food-photo flow is vision-only) and sorts newest-first by `created_at`. There is no
-      `context_window` field — the context window is `max_input_tokens`, and `max_tokens` is the
-      output cap. The Models API returns **no pricing**, so `ModelPricing.table` in the app stays
-      hand-maintained regardless; a discovered model with no pricing entry simply shows usage with
-      no cost figure.
-
-      Out of scope: `GET /v1/anthropic/models/{id}` (retrieve) — the client only needs the list;
-      add it if a caller ever wants live capability lookup for one model.
-
 - [ ] **MSP015** — Streaming response support if MacroScape uses streaming on any call shape. If
       not, mark this complete with a note that streaming was not needed.
 
@@ -162,6 +118,16 @@ remain stable.
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP045** — Add `GET /v1/anthropic/models`, forwarding to Anthropic's Models API.
+
+      Unblocks macroscape MS131 (auto-discover the model picker). `proxyModels` in `src/upstream/anthropic.ts` reuses the same Secrets-Manager key cache as `/v1/anthropic/messages` with its own narrower allowlists — headers `anthropic-version` / `accept` / `accept-encoding` (no `anthropic-beta`: the Models API is GA), query params `limit` / `after_id` / `before_id`. The response is forwarded byte-for-byte; non-2xx goes through the existing `upstream_error` sanitizer.
+
+      Anthropic's pagination (`after_id` / `before_id` → `has_more` / `first_id` / `last_id`) is deliberately **not** normalized to this API's `page` / `next_page` scheme — the client codes against Anthropic's shape, and translating it here would mean re-translating it there. CONTRACT.md calls that out so it doesn't get "fixed" later.
+
+      Two bounded-resource decisions worth knowing. The 5-minute module-scope response cache is keyed on `anthropic-version` plus the forwarded query params, which makes the key space **caller-controlled** — so the map is capped at 32 entries and dropped wholesale on overflow rather than growing unbounded for any authenticated caller cycling `after_id`. And the route is carved out of the shared daily total: `checkAndIncrement` grew a `RateLimitOptions` argument (`countTowardTotal`, `fallbackGroupLimit`) so `models` bumps only its own counter. A model-list fetch isn't an AI call, and the client fetches on launch — charging it would spend the user's budget on startup. `fallbackGroupLimit` (50) is in code rather than only in `DEFAULT_DAILY_LIMIT_MODELS`, so an unset env var can't silently remove the *only* limit the route has.
+
+      Five integration cases in `test/handler.integration.test.ts` cover the happy path, the cache hit (asserting upstream isn't called twice), 405 on non-GET, the sanitized upstream error, and the group-scoped 429. `npm run lint`, `npm run build`, `npm test` (18 passing) and `cdk synth` all clean. **Not deployed** — the route exists in production only after a `cdk deploy`.
 
 - [x] **MSP044** — Bug: USDA 403 (invalid/unconfigured key) was reported to iOS as a rate limit.
 
