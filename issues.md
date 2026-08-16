@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP046** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP047** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -31,6 +31,19 @@ remain stable.
       not, mark this complete with a note that streaming was not needed.
 
 ### Observability and security
+
+- [ ] **MSP046** — Key-compromise runbook for the session signing key, and a way to force
+      revocation. Raised in review of [[MSP044]]. `getSigningKeys` caches the parsed key for the
+      life of the Lambda container, so rotating `macroscape-proxy/session-signing-key` in Secrets
+      Manager does **not** invalidate outstanding access tokens — warm containers keep verifying
+      against the old key until they recycle, and there is no upper bound on when that happens. Two
+      parts: (1) write the runbook — rotate the secret **and** force new containers (a deploy, or a
+      config change that replaces the function), and say so where an operator will find it, not only
+      in a source comment; (2) decide whether that's good enough. A TTL on the key cache would bound
+      the window without a deploy; a `jti` denylist would make revocation immediate at the cost of a
+      read per proxied request (already noted in CONTRACT.md as not implemented). Related: the same
+      container-lifetime caching applies to the upstream API key in `src/upstream/anthropic.ts`, so
+      whatever shape this takes should probably cover both.
 
 ### Testing
 
@@ -78,7 +91,14 @@ remain stable.
 
       **Known limit, documented rather than fixed:** logout consumes the refresh token but an already-issued access token stays valid until its `exp` (≤ 1h). Instant kill needs a `jti` denylist checked on every proxied request — a database read per call to close a one-hour window — so it's filed in CONTRACT.md's "Not yet implemented" instead of being papered over with a shorter TTL, which would only multiply refresh traffic.
 
-      17 cases in `test/sessions.test.ts` cover rotation, reuse-revokes-chain, stale-epoch, expired, unknown-token and lost-race paths, plus signing-key parsing and an assertion that the raw refresh token never reaches the stored item. `npm run lint`, `npm run build`, `npm test` (35 passing) and `cdk synth` all clean. **Not deployed** — the stack change (new secret, new env vars) needs a `cdk deploy` before the routes exist in production. The iOS half is macroscape MS154.
+      **Review follow-ups (same day, pre-deploy).** Code review found two defects that turned the reuse-detection design against the user, both fixed here rather than filed:
+
+      1. **Ordering made reuse detection a griefing lever.** `completeRefresh` checked `consumedAt` *before* the epoch, so replaying any long-dead consumed token bumped the epoch again — and since consumed rows live ~120 days (90-day expiry + 30-day TTL grace) and the epoch is per-user, anyone holding one old token could sign the user out of every device, wait for them to sign back in, and repeat indefinitely. The bump also happened before the rate limit was charged, so it wasn't even throttled. The epoch check now runs first: a consumed token from a revoked chain is inert history and returns `invalid_refresh_token` with no side effect. Only a replay from the *current* chain is treated as theft.
+      2. **A 429 could strand the client.** The handler consumed the presented token and minted a replacement *before* charging the auth limit, so hitting the limit returned an error while the old token was already spent — and the client's retry then read as a replay, revoking every session. Both flows are now split into a read-only lookup and a commit step (`beginRefresh`/`completeRefresh`, `verifyAppleAssertion`/`startSession`) with the limit charged in between. Hitting a rate limit must not sign anyone out.
+
+      Also from review: the `kid` in the unknown-key error is attacker-controlled and reaches CloudWatch, so it's now clamped to 32 sanitized characters (log-injection hygiene); the signing-key doc claimed values were base64url when `parseSigningKeys` uses the literal UTF-8 bytes, which would have misled anyone rotating with an encoded key; and the container-lifetime key cache means a compromised key survives rotation until containers recycle, now filed as [[MSP046]] rather than left in a source comment.
+
+      19 cases in `test/sessions.test.ts` cover rotation, reuse-revokes-chain, stale-epoch, expired, unknown-token and lost-race paths, plus signing-key parsing and an assertion that the raw refresh token never reaches the stored item. The two regression cases added for the fixes above were both confirmed to fail against the pre-fix ordering before being kept. `npm run lint`, `npm run build`, `npm test` (37 passing) and `cdk synth` all clean. **Not deployed** — the stack change (new secret, new env vars) needs a `cdk deploy` before the routes exist in production. The iOS half is macroscape MS154.
 
 - [x] **MSP045** — Add `GET /v1/anthropic/models`, forwarding to Anthropic's Models API.
 

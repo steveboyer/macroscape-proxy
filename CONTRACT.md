@@ -139,12 +139,20 @@ the presented token and returns a new one; store the new one before discarding t
 
 **Response (200):** identical shape to `/v1/auth/session`.
 
-**Reuse detection.** Presenting an already-consumed token returns
+**Reuse detection.** Presenting an already-consumed token **from the current chain** returns
 `401 { "error": "refresh_token_reused" }` **and revokes every outstanding refresh token for that
 user**. A replay is either a client retrying against a stale copy or a stolen token racing the real
 client; the proxy can't tell those apart, so it invalidates the chain and forces a fresh Sign in
 with Apple. Clients must therefore persist the rotated token durably before using it — a client that
 loses the new token and retries with the old one will sign the user out.
+
+"From the current chain" is load-bearing. A consumed token whose chain was _already_ revoked is
+inert history, not evidence of theft, and returns `invalid_refresh_token` with no side effect —
+otherwise replaying one old token would revoke the user's sessions again on every attempt, for as
+long as the row survives.
+
+Hitting the rate limit never costs you a session: the limit is charged before the presented token is
+consumed, so a `429` leaves the token spendable.
 
 A token that predates a revocation returns `401 { "error": "invalid_refresh_token" }` instead, and
 does **not** trigger another revocation.

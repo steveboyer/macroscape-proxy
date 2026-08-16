@@ -5,9 +5,11 @@ import type {
 } from 'aws-lambda';
 import { authenticate, AuthError } from './auth/authenticate';
 import {
-  createSession,
+  beginRefresh,
+  completeRefresh,
   logoutSession,
-  refreshSession,
+  startSession,
+  verifyAppleAssertion,
   type SessionResponse,
 } from './auth/sessions';
 import { upsertUser } from './db/users';
@@ -67,9 +69,15 @@ async function dispatch(
 
 // Auth routes get their own counter and stay off the shared total: a token
 // refresh isn't an AI call, and charging it would let background refreshes
-// spend the user's daily budget. The bound still matters — without one these
-// are an unauthenticated-ish DoS surface — so it's generous, not absent.
-// One device refreshing hourly costs ~24/day; this leaves room for several.
+// spend the user's daily budget. One device refreshing hourly costs ~24/day;
+// this leaves room for several.
+//
+// Note what this does and doesn't bound. The counter is per-user, so it can
+// only be charged once a request resolves to a user — a guess at a random
+// refresh token, or an unverifiable Apple assertion, is rejected before that
+// and costs one DynamoDB read or one JWKS verification, uncounted. Guessing a
+// 256-bit token isn't a realistic attack, and API Gateway throttling is what
+// bounds raw request volume; this limit bounds *authenticated* auth traffic.
 const AUTH_FALLBACK_DAILY_LIMIT = 200;
 
 async function handleAuthSession(
@@ -85,12 +93,15 @@ async function handleAuthSession(
     if (!appleIdToken) {
       throw new AuthError(400, 'invalid_request', 'body must include appleIdToken');
     }
-    const session = await createSession(appleIdToken);
-    logger.setUserId(session.userId);
-    await checkAndIncrement(session.userId, 'auth', {
+    // Verify → charge → mint. Charging after the mint would leave an orphaned
+    // refresh row behind every 429.
+    const sub = await verifyAppleAssertion(appleIdToken);
+    logger.setUserId(sub);
+    await checkAndIncrement(sub, 'auth', {
       countTowardTotal: false,
       fallbackGroupLimit: AUTH_FALLBACK_DAILY_LIMIT,
     });
+    const session = await startSession(sub);
     return jsonResponse(200, sessionBody(session));
   } catch (err) {
     return errorResponse(err, logger);
@@ -110,12 +121,17 @@ async function handleAuthRefresh(
     if (!refreshToken) {
       throw new AuthError(400, 'invalid_request', 'body must include refreshToken');
     }
-    const session = await refreshSession(refreshToken);
-    logger.setUserId(session.userId);
-    await checkAndIncrement(session.userId, 'auth', {
+    // Look up → charge → rotate. The old flow consumed the presented token
+    // before charging, so a 429 spent the client's refresh token without
+    // handing back the replacement — and the client's retry then read as a
+    // replay, revoking every session the user had.
+    const record = await beginRefresh(refreshToken);
+    logger.setUserId(record.userId);
+    await checkAndIncrement(record.userId, 'auth', {
       countTowardTotal: false,
       fallbackGroupLimit: AUTH_FALLBACK_DAILY_LIMIT,
     });
+    const session = await completeRefresh(refreshToken, record);
     return jsonResponse(200, sessionBody(session));
   } catch (err) {
     return errorResponse(err, logger);

@@ -8,13 +8,24 @@ import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-sec
  * flip `activeKid`, and tokens signed with the old key keep verifying until
  * they expire (≤ 1h later), at which point the old entry can be dropped.
  *
- *   { "activeKid": "2026-08", "keys": { "2026-08": "<base64url>", "2026-05": "<base64url>" } }
+ *   { "activeKid": "2026-08", "keys": { "2026-08": "<secret>", "2026-05": "<secret>" } }
+ *
+ * **Key values are used as raw UTF-8 bytes, not decoded.** A base64url string
+ * pasted here is HMAC'd as its literal characters, so it carries the entropy
+ * of the encoded text rather than of the bytes it encodes — fine, but don't
+ * assume "32 base64url chars" means a 256-bit key. Use a high-entropy string
+ * of at least 32 characters; the CDK-generated value is 64 alphanumerics.
  *
  * A bare (non-JSON) secret value is accepted as a single key under the kid
  * `default`. That's the shape a human gets by pasting a random string into the
  * console, which is how every other secret in this stack is populated — the
  * tolerant read means a fat-fingered rotation degrades to "one key" rather
  * than to "all requests 500".
+ *
+ * **On key compromise, rotating the secret is not sufficient.** The parsed
+ * keys are cached for the life of the container, so a leaked key keeps
+ * verifying until every warm Lambda recycles. Rotate *and* redeploy to force
+ * new containers; see MSP046 for the runbook.
  */
 
 const secretsClient = new SecretsManagerClient({});

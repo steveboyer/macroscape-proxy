@@ -69,7 +69,10 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
   // way: reject rather than trying every key in turn.
   const key = kid ? keys.get(kid) : undefined;
   if (!key) {
-    throw new AccessTokenError('invalid_signature', `unknown kid: ${kid ?? '(absent)'}`);
+    // `kid` is attacker-controlled and this message reaches CloudWatch, so
+    // clamp it — an unbounded string here is a log-injection lever, and the
+    // value has no diagnostic worth beyond its first few characters.
+    throw new AccessTokenError('invalid_signature', `unknown kid: ${describeKid(kid)}`);
   }
 
   try {
@@ -105,6 +108,12 @@ export function looksLikeProxyToken(token: string): boolean {
   } catch {
     return false;
   }
+}
+
+function describeKid(kid: string | undefined): string {
+  if (kid === undefined) return '(absent)';
+  const safe = kid.replace(/[^\w.-]/g, '?').slice(0, 32);
+  return safe.length < kid.length ? `${safe}…` : safe;
 }
 
 function readAccessTokenTtl(): number {

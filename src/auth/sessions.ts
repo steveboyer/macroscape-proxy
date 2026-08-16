@@ -5,6 +5,7 @@ import {
   getRefreshRecord,
   getSessionEpoch,
   issueRefreshToken,
+  type RefreshRecord,
 } from '../db/sessions';
 import { AuthError } from './authenticate';
 import { verifyAppleIdToken, AppleTokenError } from './appleVerifier';
@@ -26,46 +27,75 @@ export interface SessionResponse {
   userId: string;
 }
 
-export async function createSession(appleIdToken: string): Promise<SessionResponse> {
-  let sub: string;
+/**
+ * Both flows are split into a **lookup** step and a **commit** step so the
+ * caller can charge the rate limit in between. Doing the whole thing in one
+ * call meant a 429 could fire *after* the old refresh token was already
+ * consumed and a replacement minted: the client got an error, its token was
+ * spent, and its retry looked exactly like a replay — which revokes the
+ * user's whole chain. Hitting a rate limit must not sign anyone out.
+ */
+
+/** Verifies the Apple assertion. No writes — safe to call before rate limiting. */
+export async function verifyAppleAssertion(appleIdToken: string): Promise<string> {
   try {
     const claims = await verifyAppleIdToken(appleIdToken);
-    sub = claims.sub;
+    return claims.sub;
   } catch (err) {
     if (err instanceof AppleTokenError) {
       throw new AuthError(401, err.reason, err.message);
     }
     throw err;
   }
+}
 
+/** Commit step for `/v1/auth/session`. */
+export async function startSession(sub: string): Promise<SessionResponse> {
   await upsertUser(sub);
   const epoch = await getSessionEpoch(sub);
   return mintPair(sub, epoch);
 }
 
-export async function refreshSession(refreshToken: string): Promise<SessionResponse> {
+/**
+ * Lookup step for `/v1/auth/refresh`. Read-only: resolves the presented token
+ * to its record so the caller knows which user to charge. Every validity
+ * decision — including reuse detection, which mutates — happens in
+ * `completeRefresh`, after the limit has been charged.
+ */
+export async function beginRefresh(refreshToken: string): Promise<RefreshRecord> {
   const record = await getRefreshRecord(refreshToken);
   if (!record) {
     throw new AuthError(401, 'invalid_refresh_token', 'no record for presented token');
   }
+  return record;
+}
 
-  // Replay of an already-consumed token. Either the client is retrying against
-  // a stale copy or someone lifted one; there's no way to tell them apart from
-  // here, so revoke the whole chain and make both parties sign in again.
-  if (record.consumedAt !== null) {
-    await bumpSessionEpoch(record.userId);
-    throw new AuthError(401, 'refresh_token_reused', 'consumed token replayed; chain revoked');
+export async function completeRefresh(
+  refreshToken: string,
+  record: RefreshRecord,
+): Promise<SessionResponse> {
+  // Epoch first, and deliberately so. A consumed token whose epoch is already
+  // stale is inert history, not evidence of theft: the chain it belonged to
+  // was revoked long ago. Checking `consumedAt` before the epoch made every
+  // replay of such a token bump the epoch again — and because consumed rows
+  // live ~120 days (expiry + the TTL grace) and the epoch is per-user, anyone
+  // holding one old token could sign the user out of every device, wait for
+  // them to sign back in, and do it again indefinitely.
+  const epoch = await getSessionEpoch(record.userId);
+  if (record.epoch !== epoch) {
+    throw new AuthError(401, 'invalid_refresh_token', 'token predates a chain revocation');
   }
 
   if (Date.parse(record.expiresAt) <= Date.now()) {
     throw new AuthError(401, 'invalid_refresh_token', 'token expired');
   }
 
-  // Epoch mismatch means the chain was revoked after this token was minted
-  // (a logout-all, or a prior reuse detection). Not reuse — don't bump again.
-  const epoch = await getSessionEpoch(record.userId);
-  if (record.epoch !== epoch) {
-    throw new AuthError(401, 'invalid_refresh_token', 'token predates a chain revocation');
+  // Replay of a token from the *current* chain. Either the client is retrying
+  // against a stale copy or someone lifted one; there's no way to tell them
+  // apart from here, so revoke the chain and make both parties sign in again.
+  if (record.consumedAt !== null) {
+    await bumpSessionEpoch(record.userId);
+    throw new AuthError(401, 'refresh_token_reused', 'consumed token replayed; chain revoked');
   }
 
   // Consume before issuing. If the process dies between the two the client

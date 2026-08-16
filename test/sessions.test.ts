@@ -9,7 +9,13 @@ import {
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 
-import { createSession, logoutSession, refreshSession } from '../src/auth/sessions';
+import {
+  beginRefresh,
+  completeRefresh,
+  logoutSession,
+  startSession,
+  verifyAppleAssertion,
+} from '../src/auth/sessions';
 import { AuthError } from '../src/auth/authenticate';
 import { hashRefreshToken } from '../src/db/sessions';
 import { parseSigningKeys, resetSigningKeyCacheForTests } from '../src/auth/sessionKeys';
@@ -110,6 +116,14 @@ describe('access tokens', () => {
   });
 });
 
+// The route splits verify → charge → mint (see handler.ts); this helper runs
+// the two halves back to back the way a successful request does.
+const createSession = async (appleToken: string) =>
+  startSession(await verifyAppleAssertion(appleToken));
+
+// Same for refresh: look up, then commit.
+const refreshSession = async (token: string) => completeRefresh(token, await beginRefresh(token));
+
 describe('createSession', () => {
   it('exchanges an Apple id_token for an access + refresh pair', async () => {
     const session = await createSession('good-apple-token');
@@ -184,6 +198,47 @@ describe('refreshSession', () => {
       .commandCalls(UpdateCommand)
       .some((c) => String(c.args[0].input.UpdateExpression).includes('ADD sessionEpoch'));
     expect(bumped).toBe(true);
+  });
+
+  // Regression: the epoch check has to come *before* the consumed check.
+  // With the order reversed, anyone holding a long-dead consumed token could
+  // replay it to revoke every live session, wait for the user to sign back
+  // in, and repeat — for the ~120 days the row survives.
+  it('does not re-revoke when a consumed token from a revoked epoch is replayed', async () => {
+    ddbMock
+      .on(GetCommand)
+      .callsFake((input) =>
+        String(input.Key?.pk ?? '').startsWith('SESSION#')
+          ? liveRecord({ epoch: 0, consumedAt: new Date().toISOString() })
+          : { Item: { sessionEpoch: 4 } },
+      );
+
+    await expect(refreshSession('old-consumed')).rejects.toMatchObject({
+      reason: 'invalid_refresh_token',
+    });
+
+    const bumped = ddbMock
+      .commandCalls(UpdateCommand)
+      .some((c) => String(c.args[0].input.UpdateExpression).includes('ADD sessionEpoch'));
+    expect(bumped).toBe(false);
+  });
+
+  // Regression: the lookup step runs before the rate limit is charged, so it
+  // must not mutate. If a 429 could fire after the token was consumed, the
+  // client's retry would look like a replay and sign the user out.
+  it('beginRefresh neither consumes nor mints', async () => {
+    ddbMock
+      .on(GetCommand)
+      .callsFake((input) =>
+        String(input.Key?.pk ?? '').startsWith('SESSION#')
+          ? liveRecord()
+          : { Item: { sessionEpoch: 0 } },
+      );
+
+    const record = await beginRefresh('presented-token');
+    expect(record.userId).toBe('user-1');
+    expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+    expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
   });
 
   it('rejects a token minted before a chain revocation without re-revoking', async () => {
