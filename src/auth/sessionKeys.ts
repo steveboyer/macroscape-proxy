@@ -1,7 +1,7 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 
 /**
- * Signing-key material for proxy-issued access tokens (MSP044).
+ * Signing-key material for proxy-issued access tokens (MSP047).
  *
  * The secret holds JSON so two keys can be live at once, which is what makes
  * rotation possible without a flag day: publish the new key under a new `kid`,

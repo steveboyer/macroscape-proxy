@@ -31,7 +31,7 @@ export const groupUsageKey = (appleUserId: string, group: string, date: Date): I
   sk: `DATE#${toUtcDateString(date)}`,
 });
 
-// Refresh-token record (MSP044). Keyed by the SHA-256 of the token, never the
+// Refresh-token record (MSP047). Keyed by the SHA-256 of the token, never the
 // token itself: a database dump is then useless for authenticating, since the
 // stored value can't be presented and can't be reversed into one that can.
 export const sessionKey = (refreshTokenHash: string): ItemKey => ({

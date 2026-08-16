@@ -53,7 +53,7 @@ async function dispatch(
   if (path === '/v1/usda/foods/search') {
     return handleFoodsSearch(event, logger);
   }
-  // Session endpoints (MSP044). Not upstream-forwarding, so they sit outside
+  // Session endpoints (MSP047). Not upstream-forwarding, so they sit outside
   // the `/v1/<upstream>/<endpoint>` convention — same exception as /health.
   if (path === '/v1/auth/session') {
     return handleAuthSession(event, logger);

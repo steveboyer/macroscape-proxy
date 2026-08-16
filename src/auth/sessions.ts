@@ -12,7 +12,7 @@ import { verifyAppleIdToken, AppleTokenError } from './appleVerifier';
 import { mintAccessToken } from './sessionTokens';
 
 /**
- * Session flows for MSP044 — the three `/v1/auth/*` routes.
+ * Session flows for MSP047 — the three `/v1/auth/*` routes.
  *
  * `/session` is the only place an Apple `id_token` is required; after that the
  * client runs entirely on proxy credentials, so Sign in with Apple fires once

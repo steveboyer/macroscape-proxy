@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP047** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP048** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -33,7 +33,7 @@ remain stable.
 ### Observability and security
 
 - [ ] **MSP046** — Key-compromise runbook for the session signing key, and a way to force
-      revocation. Raised in review of [[MSP044]]. `getSigningKeys` caches the parsed key for the
+      revocation. Raised in review of [[MSP047]]. `getSigningKeys` caches the parsed key for the
       life of the Lambda container, so rotating `macroscape-proxy/session-signing-key` in Secrets
       Manager does **not** invalidate outstanding access tokens — warm containers keep verifying
       against the old key until they recycle, and there is no upper bound on when that happens. Two
@@ -80,8 +80,16 @@ remain stable.
 
 (Most recent first; ID order is reverse-chronological.)
 
-- [x] **MSP044** — Issue proxy session tokens instead of using Apple's `id_token` as the bearer
+- [x] **MSP047** — Issue proxy session tokens instead of using Apple's `id_token` as the bearer
       credential on every request.
+
+      **Filed as MSP044, renumbered to MSP047.** This branch was cut before upstream's `4180735`
+      landed, which had already spent MSP044 on the USDA 403 fix (PR #9) and moved the pointer to
+      MSP045. Local `issues.md` still read "MSP044 is next", so one ID was assigned to two unrelated
+      issues. Upstream keeps MSP044 — assigned and merged first, and the app's MS124 note already
+      points at it. The five commits that introduced this work still say "MSP044" in their subjects
+      and bodies, which is accurate for what they contained when written; this entry is the
+      reconciliation.
 
       Three routes in `src/handler.ts` (`POST /v1/auth/session` / `/refresh` / `/logout`) with the flows in `src/auth/sessions.ts`. `/session` verifies the Apple assertion exactly as before, upserts the user, and returns a proxy access token plus a refresh token; after that the client never touches Apple again until the refresh chain dies. Access tokens are HS256 JWTs (`src/auth/sessionTokens.ts`) carrying the Apple `sub` unchanged, so rate-limit counters, user records, and cost attribution needed no migration. The signing key lives in a new CDK-**generated** `macroscape-proxy/session-signing-key` secret — unlike the upstream keys there's no external value to paste in — and `src/auth/sessionKeys.ts` accepts either a bare string or a `{activeKid, keys}` JSON shape so two keys can be live during a rotation.
 

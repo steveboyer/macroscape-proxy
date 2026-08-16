@@ -5,7 +5,7 @@ import { client, getTableName } from './client';
 import { sessionKey, sessionTtl, userKey } from './keys';
 
 /**
- * Refresh-token storage for proxy sessions (MSP044).
+ * Refresh-token storage for proxy sessions (MSP047).
  *
  * Two properties the shape below is built around:
  *

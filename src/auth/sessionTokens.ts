@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify, decodeJwt, decodeProtectedHeader, errors as joseErr
 import { getSigningKeys } from './sessionKeys';
 
 /**
- * Proxy-issued access tokens (MSP044).
+ * Proxy-issued access tokens (MSP047).
  *
  * Apple's id_token is an authentication assertion for the moment of sign-in,
  * not a bearer credential for ongoing API calls: it lives ~10 minutes and iOS

@@ -51,7 +51,7 @@ interaction. See [Session endpoints](#session-endpoints) for the full flow.
 > (`ASAuthorizationController.performRequests()` always runs the interactive flow, and
 > `credentialState(forUserID:)` returns authorization state, not a token). The id_token is an
 > authentication assertion for the moment of sign-in, not a credential for ongoing API calls, and
-> using it as one forced a Sign in with Apple sheet roughly every ten minutes. MSP044 replaced it
+> using it as one forced a Sign in with Apple sheet roughly every ten minutes. MSP047 replaced it
 > with the exchange described below.
 
 **Transitional:** the upstream-forwarding routes and `/health` still accept a raw Apple `id_token`

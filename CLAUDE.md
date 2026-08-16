@@ -15,7 +15,7 @@ registrations Sign in with Apple needs).
 AWS Lambda proxy for the MacroScape iOS app, served at `https://api.macroscape.app`. Authenticates
 callers with **proxy-issued session tokens** — the client signs in with Apple once, exchanges the
 `id_token` at `POST /v1/auth/session`, and thereafter sends a proxy access token (Apple's own
-`id_token` is still accepted directly for one release; see MSP044). Auto-creates a user record on
+`id_token` is still accepted directly for one release; see MSP047). Auto-creates a user record on
 first authenticated request, enforces a per-user daily rate limit, and forwards to upstream
 providers behind `/v1/<upstream>/<endpoint>` routes (`/v1/anthropic/messages` → Anthropic,
 `/v1/usda/foods/search` → USDA FoodData Central) with strict header allowlists and centralized API

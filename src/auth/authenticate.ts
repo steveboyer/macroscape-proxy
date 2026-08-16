@@ -18,7 +18,7 @@ export class AuthError extends Error {
 }
 
 /**
- * Accepts either credential during the MSP044 transition: a proxy-issued
+ * Accepts either credential during the MSP047 transition: a proxy-issued
  * access token (the destination) or an Apple `id_token` (what clients sent
  * before). Selection is by issuer rather than by trying both verifiers — a
  * blind fallback would report the *second* verifier's failure for every bad

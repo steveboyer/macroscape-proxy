@@ -48,7 +48,7 @@ export class MacroScapeProxyStack extends cdk.Stack {
       description: 'USDA FoodData Central API key',
     });
 
-    // HMAC key for proxy-issued access tokens (MSP044). Generated rather than
+    // HMAC key for proxy-issued access tokens (MSP047). Generated rather than
     // left empty like the upstream keys — there's no external value to paste
     // in, and a hand-typed one would be weaker than this. Rotation replaces
     // the value with the two-key JSON shape documented in src/auth/sessionKeys.ts.
