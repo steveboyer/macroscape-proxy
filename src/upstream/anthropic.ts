@@ -4,6 +4,7 @@ import { UpstreamError } from './errors';
 export { UpstreamError };
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_MODELS_URL = 'https://api.anthropic.com/v1/models';
 
 // Strict allowlist. The caller's Authorization (Apple JWT) is dropped
 // on purpose — the proxy attaches its own x-api-key.
@@ -14,6 +15,27 @@ const FORWARDED_HEADER_NAMES = new Set([
   'accept',
   'accept-encoding',
 ]);
+
+// Narrower than the /v1/messages allowlist: the Models API is GA (no
+// `anthropic-beta`) and a GET carries no body (no `content-type`).
+const MODELS_FORWARDED_HEADER_NAMES = new Set(['anthropic-version', 'accept', 'accept-encoding']);
+
+// The Models API paginates with `after_id` / `before_id` and returns
+// `has_more` / `first_id` / `last_id` — deliberately *not* the
+// `page` / `next_page` scheme USDA uses. Forwarded as-is; see CONTRACT.md.
+const MODELS_FORWARDED_QUERY_PARAMS = new Set(['limit', 'after_id', 'before_id']);
+
+// The model list changes on the order of weeks, and the iOS client fetches it
+// on launch, so a module-scope TTL cache means a warm container answers most
+// launches without touching upstream. Same lifetime rules as the JWKS cache:
+// it dies with the container, so the worst-case staleness is the TTL.
+const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+// Cache keys embed caller-supplied pagination params, so the key space is
+// caller-controlled. Cap the map and drop it wholesale when it overflows —
+// an unbounded Map here would be a memory-growth lever for any authenticated
+// caller cycling `after_id` values.
+const MODELS_CACHE_MAX_ENTRIES = 32;
+const modelsCache = new Map<string, { expiresAt: number; response: ProxyResponse }>();
 
 // Module-scope singleton. Cached key survives Lambda warm starts.
 // Cache invalidates with container recycling — fine until secret rotation
@@ -79,6 +101,80 @@ export async function proxyMessages(
 
   // Non-2xx — sanitize to a known envelope so upstream implementation
   // details (request IDs, internal codes, stack traces) can't leak.
+  return {
+    statusCode: response.status,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(sanitizeUpstreamError(rawBody)),
+  };
+}
+
+export async function proxyModels(
+  callerHeaders: Record<string, string | undefined>,
+  callerQueryParams: Record<string, string | undefined> | undefined,
+  requestId: string,
+): Promise<ProxyResponse> {
+  const url = new URL(ANTHROPIC_MODELS_URL);
+  if (callerQueryParams) {
+    for (const [name, value] of Object.entries(callerQueryParams)) {
+      if (value === undefined) continue;
+      if (MODELS_FORWARDED_QUERY_PARAMS.has(name)) {
+        url.searchParams.set(name, value);
+      }
+    }
+  }
+  // Sort so `?limit=2&after_id=x` and `?after_id=x&limit=2` share a cache entry.
+  url.searchParams.sort();
+
+  const forwardedHeaders: Record<string, string> = {};
+  for (const [name, value] of Object.entries(callerHeaders)) {
+    if (value === undefined) continue;
+    const lname = name.toLowerCase();
+    if (MODELS_FORWARDED_HEADER_NAMES.has(lname)) {
+      forwardedHeaders[lname] = value;
+    }
+  }
+
+  // `anthropic-version` is part of the key: different versions can return
+  // different response shapes, so they must not share a cached body.
+  const cacheKey = `${forwardedHeaders['anthropic-version'] ?? ''}|${url.search}`;
+  const cached = modelsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.response;
+  }
+
+  const apiKey = await getUpstreamApiKey();
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      ...forwardedHeaders,
+      'x-api-key': apiKey,
+      'x-request-id': requestId,
+    },
+  });
+
+  const rawBody = await response.text();
+  const isSuccess = response.status >= 200 && response.status < 300;
+
+  if (isSuccess) {
+    const responseHeaders: Record<string, string> = {};
+    const upstreamContentType = response.headers.get('content-type');
+    if (upstreamContentType) {
+      responseHeaders['content-type'] = upstreamContentType;
+    }
+    const proxied: ProxyResponse = {
+      statusCode: response.status,
+      headers: responseHeaders,
+      body: rawBody,
+    };
+    // Only successes are cached — an upstream blip shouldn't be pinned for the
+    // whole TTL.
+    if (modelsCache.size >= MODELS_CACHE_MAX_ENTRIES) {
+      modelsCache.clear();
+    }
+    modelsCache.set(cacheKey, { expiresAt: Date.now() + MODELS_CACHE_TTL_MS, response: proxied });
+    return proxied;
+  }
+
   return {
     statusCode: response.status,
     headers: { 'content-type': 'application/json' },
