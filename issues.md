@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP045** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP049** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -31,6 +31,19 @@ remain stable.
       not, mark this complete with a note that streaming was not needed.
 
 ### Observability and security
+
+- [ ] **MSP046** — Key-compromise runbook for the session signing key, and a way to force
+      revocation. Raised in review of [[MSP047]]. `getSigningKeys` caches the parsed key for the
+      life of the Lambda container, so rotating `macroscape-proxy/session-signing-key` in Secrets
+      Manager does **not** invalidate outstanding access tokens — warm containers keep verifying
+      against the old key until they recycle, and there is no upper bound on when that happens. Two
+      parts: (1) write the runbook — rotate the secret **and** force new containers (a deploy, or a
+      config change that replaces the function), and say so where an operator will find it, not only
+      in a source comment; (2) decide whether that's good enough. A TTL on the key cache would bound
+      the window without a deploy; a `jti` denylist would make revocation immediate at the cost of a
+      read per proxied request (already noted in CONTRACT.md as not implemented). Related: the same
+      container-lifetime caching applies to the upstream API key in `src/upstream/anthropic.ts`, so
+      whatever shape this takes should probably cover both.
 
 ### Testing
 
@@ -66,6 +79,60 @@ remain stable.
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP048** — Slow Anthropic calls surfaced as API Gateway's generic
+      `500 {"message":"Internal Server Error"}` — useless to the client, which showed "API error
+      (500). Check your connection". The Lambda timeout was 10 s and the upstream `fetch` had no
+      deadline, so an Opus label scan that took 10.5 s outlived the function; Lambda killed it and
+      APIGW answered with its own body, never a proxy envelope.
+
+      `lib/macroscape-proxy-stack.ts`: function timeout 10 s → 29 s (the APIGW HTTP API integration
+      ceiling is 30 s) and a new `UPSTREAM_TIMEOUT_MS=27000` env var kept adjacent to it.
+      `src/upstream/errors.ts` gains `fetchUpstream(provider, url, init)` — `fetch` with
+      `AbortSignal.timeout`, mapping a `TimeoutError` to `504 upstream_timeout` and undici's
+      `TypeError: fetch failed` to `502 upstream_unreachable`, both with an `upstream: { type,
+      message }` block naming the provider — and `UpstreamError` carries an `extra` object that
+      `errorResponse` spreads into the envelope. Anthropic messages / models and USDA search all go
+      through it. CONTRACT.md documents the two new rows, the deadline, and the client mapping.
+      Tests: timeout → 504 and connection failure → 502 on `/v1/anthropic/messages`.
+
+- [x] **MSP047** — Issue proxy session tokens instead of using Apple's `id_token` as the bearer
+      credential on every request.
+
+      **Filed as MSP044, renumbered to MSP047.** This branch was cut before upstream's `4180735`
+      landed, which had already spent MSP044 on the USDA 403 fix (PR #9) and moved the pointer to
+      MSP045. Local `issues.md` still read "MSP044 is next", so one ID was assigned to two unrelated
+      issues. Upstream keeps MSP044 — assigned and merged first, and the app's MS124 note already
+      points at it. The five commits that introduced this work still say "MSP044" in their subjects
+      and bodies, which is accurate for what they contained when written; this entry is the
+      reconciliation.
+
+      Three routes in `src/handler.ts` (`POST /v1/auth/session` / `/refresh` / `/logout`) with the flows in `src/auth/sessions.ts`. `/session` verifies the Apple assertion exactly as before, upserts the user, and returns a proxy access token plus a refresh token; after that the client never touches Apple again until the refresh chain dies. Access tokens are HS256 JWTs (`src/auth/sessionTokens.ts`) carrying the Apple `sub` unchanged, so rate-limit counters, user records, and cost attribution needed no migration. The signing key lives in a new CDK-**generated** `macroscape-proxy/session-signing-key` secret — unlike the upstream keys there's no external value to paste in — and `src/auth/sessionKeys.ts` accepts either a bare string or a `{activeKid, keys}` JSON shape so two keys can be live during a rotation.
+
+      **Refresh tokens are stored as SHA-256 hashes** under `SESSION#<hash>` (`src/db/sessions.ts`), never in the clear — a table dump yields nothing presentable. Each redeem consumes the presented token via a conditional write and issues a new one; a consumed token presented again revokes the user's entire chain. The conditional is also what makes the concurrent case safe: two parallel redeems can't both win, and the loser is treated as reuse. **Chain revocation is a `sessionEpoch` counter on the user record**, not a scan — one write invalidates every outstanding token for that user with no GSI and no unbounded delete. A token that merely predates a revocation returns `invalid_refresh_token` and deliberately does *not* re-revoke.
+
+      `authenticate()` now picks its verifier by the token's `iss` claim rather than trying both, so a proxy token and an Apple id_token are both accepted for one release without a blind fallback reporting the wrong verifier's error. The Apple path is transitional — remove it once macroscape MS154 has shipped and been verified. `/v1/auth/*` rides its own `auth` counter off the shared total (`DEFAULT_DAILY_LIMIT_AUTH=200`), reusing the `RateLimitOptions` carve-out added by [[MSP045]]; a refresh isn't an AI call, and one device refreshing hourly costs ~24/day.
+
+      **Known limit, documented rather than fixed:** logout consumes the refresh token but an already-issued access token stays valid until its `exp` (≤ 1h). Instant kill needs a `jti` denylist checked on every proxied request — a database read per call to close a one-hour window — so it's filed in CONTRACT.md's "Not yet implemented" instead of being papered over with a shorter TTL, which would only multiply refresh traffic.
+
+      **Review follow-ups (same day, pre-deploy).** Code review found two defects that turned the reuse-detection design against the user, both fixed here rather than filed:
+
+      1. **Ordering made reuse detection a griefing lever.** `completeRefresh` checked `consumedAt` *before* the epoch, so replaying any long-dead consumed token bumped the epoch again — and since consumed rows live ~120 days (90-day expiry + 30-day TTL grace) and the epoch is per-user, anyone holding one old token could sign the user out of every device, wait for them to sign back in, and repeat indefinitely. The bump also happened before the rate limit was charged, so it wasn't even throttled. The epoch check now runs first: a consumed token from a revoked chain is inert history and returns `invalid_refresh_token` with no side effect. Only a replay from the *current* chain is treated as theft.
+      2. **A 429 could strand the client.** The handler consumed the presented token and minted a replacement *before* charging the auth limit, so hitting the limit returned an error while the old token was already spent — and the client's retry then read as a replay, revoking every session. Both flows are now split into a read-only lookup and a commit step (`beginRefresh`/`completeRefresh`, `verifyAppleAssertion`/`startSession`) with the limit charged in between. Hitting a rate limit must not sign anyone out.
+
+      Also from review: the `kid` in the unknown-key error is attacker-controlled and reaches CloudWatch, so it's now clamped to 32 sanitized characters (log-injection hygiene); the signing-key doc claimed values were base64url when `parseSigningKeys` uses the literal UTF-8 bytes, which would have misled anyone rotating with an encoded key; and the container-lifetime key cache means a compromised key survives rotation until containers recycle, now filed as [[MSP046]] rather than left in a source comment.
+
+      19 cases in `test/sessions.test.ts` cover rotation, reuse-revokes-chain, stale-epoch, expired, unknown-token and lost-race paths, plus signing-key parsing and an assertion that the raw refresh token never reaches the stored item. The two regression cases added for the fixes above were both confirmed to fail against the pre-fix ordering before being kept. `npm run lint`, `npm run build`, `npm test` (37 passing) and `cdk synth` all clean. **Deployed** in PR #14 (squash-merged to `main`, Deploy workflow green), and confirmed live: `405` on GET, `401 invalid_refresh_token` for a junk token, `400 invalid_request` for an empty body. The iOS half (macroscape MS154 / MS155) then exercised the real path on device — Sign in with Apple followed by a working AI call — so the session exchange is proven end to end, not just unit-tested.
+
+- [x] **MSP045** — Add `GET /v1/anthropic/models`, forwarding to Anthropic's Models API.
+
+      Unblocks macroscape MS131 (auto-discover the model picker). `proxyModels` in `src/upstream/anthropic.ts` reuses the same Secrets-Manager key cache as `/v1/anthropic/messages` with its own narrower allowlists — headers `anthropic-version` / `accept` / `accept-encoding` (no `anthropic-beta`: the Models API is GA), query params `limit` / `after_id` / `before_id`. The response is forwarded byte-for-byte; non-2xx goes through the existing `upstream_error` sanitizer.
+
+      Anthropic's pagination (`after_id` / `before_id` → `has_more` / `first_id` / `last_id`) is deliberately **not** normalized to this API's `page` / `next_page` scheme — the client codes against Anthropic's shape, and translating it here would mean re-translating it there. CONTRACT.md calls that out so it doesn't get "fixed" later.
+
+      Two bounded-resource decisions worth knowing. The 5-minute module-scope response cache is keyed on `anthropic-version` plus the forwarded query params, which makes the key space **caller-controlled** — so the map is capped at 32 entries and dropped wholesale on overflow rather than growing unbounded for any authenticated caller cycling `after_id`. And the route is carved out of the shared daily total: `checkAndIncrement` grew a `RateLimitOptions` argument (`countTowardTotal`, `fallbackGroupLimit`) so `models` bumps only its own counter. A model-list fetch isn't an AI call, and the client fetches on launch — charging it would spend the user's budget on startup. `fallbackGroupLimit` (50) is in code rather than only in `DEFAULT_DAILY_LIMIT_MODELS`, so an unset env var can't silently remove the *only* limit the route has.
+
+      Five integration cases in `test/handler.integration.test.ts` cover the happy path, the cache hit (asserting upstream isn't called twice), 405 on non-GET, the sanitized upstream error, and the group-scoped 429. `npm run lint`, `npm run build`, `npm test` (18 passing) and `cdk synth` all clean. **Deployed** in PR #14 alongside MSP047; live and requiring auth (`401 missing_bearer_token` unauthenticated). Unblocks macroscape MS131, whose text still says otherwise.
 
 - [x] **MSP044** — Bug: USDA 403 (invalid/unconfigured key) was reported to iOS as a rate limit.
 
