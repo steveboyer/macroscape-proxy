@@ -74,9 +74,16 @@ export class MacroScapeProxyStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       memorySize: 512,
-      timeout: cdk.Duration.seconds(10),
+      // API Gateway HTTP APIs cap the integration at 30 s, so this is the
+      // ceiling. Upstream calls abort at UPSTREAM_TIMEOUT_MS (below) so the
+      // function answers with a proxy envelope instead of being killed —
+      // a killed function surfaces as APIGW's generic 500 (MSP048).
+      timeout: cdk.Duration.seconds(29),
       logGroup: handlerLogGroup,
       environment: {
+        // Must stay under `timeout` above with room for the response to
+        // be written; src/upstream/errors.ts falls back to 27000.
+        UPSTREAM_TIMEOUT_MS: '27000',
         TABLE_NAME: table.tableName,
         UPSTREAM_SECRET_ARN: upstreamApiKey.secretArn,
         APPLE_SIGNIN_SECRET_ARN: appleSignInPrivateKey.secretArn,

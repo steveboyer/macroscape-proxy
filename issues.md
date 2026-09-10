@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP048** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP049** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -79,6 +79,22 @@ remain stable.
 ## Done
 
 (Most recent first; ID order is reverse-chronological.)
+
+- [x] **MSP048** — Slow Anthropic calls surfaced as API Gateway's generic
+      `500 {"message":"Internal Server Error"}` — useless to the client, which showed "API error
+      (500). Check your connection". The Lambda timeout was 10 s and the upstream `fetch` had no
+      deadline, so an Opus label scan that took 10.5 s outlived the function; Lambda killed it and
+      APIGW answered with its own body, never a proxy envelope.
+
+      `lib/macroscape-proxy-stack.ts`: function timeout 10 s → 29 s (the APIGW HTTP API integration
+      ceiling is 30 s) and a new `UPSTREAM_TIMEOUT_MS=27000` env var kept adjacent to it.
+      `src/upstream/errors.ts` gains `fetchUpstream(provider, url, init)` — `fetch` with
+      `AbortSignal.timeout`, mapping a `TimeoutError` to `504 upstream_timeout` and undici's
+      `TypeError: fetch failed` to `502 upstream_unreachable`, both with an `upstream: { type,
+      message }` block naming the provider — and `UpstreamError` carries an `extra` object that
+      `errorResponse` spreads into the envelope. Anthropic messages / models and USDA search all go
+      through it. CONTRACT.md documents the two new rows, the deadline, and the client mapping.
+      Tests: timeout → 504 and connection failure → 502 on `/v1/anthropic/messages`.
 
 - [x] **MSP047** — Issue proxy session tokens instead of using Apple's `id_token` as the bearer
       credential on every request.

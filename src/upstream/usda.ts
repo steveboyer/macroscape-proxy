@@ -1,5 +1,5 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-import { UpstreamError } from './errors';
+import { fetchUpstream, UpstreamError } from './errors';
 import type { ProxyResponse } from './anthropic';
 
 const USDA_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
@@ -31,7 +31,7 @@ export async function proxyFoodsSearch(
   }
   url.searchParams.set('api_key', apiKey);
 
-  const response = await fetch(url, {
+  const response = await fetchUpstream('USDA', url, {
     method: 'GET',
     headers: {
       accept: 'application/json',

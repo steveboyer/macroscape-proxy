@@ -467,6 +467,49 @@ describe('POST /v1/anthropic/messages — integration', () => {
     expect(JSON.stringify(body)).not.toContain('leak-me-please');
   });
 
+  it('maps an upstream timeout to 504 upstream_timeout instead of letting Lambda die', async () => {
+    routeFetch({
+      anthropic: () => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      },
+    });
+
+    const token = await signToken();
+    const event = makeAnthropicEvent(token, {
+      model: 'claude-opus-4-7',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+    const result = (await handler(event)) as APIGatewayProxyStructuredResultV2;
+
+    expect(result.statusCode).toBe(504);
+    const body = JSON.parse(result.body as string);
+    expect(body.error).toBe('upstream_timeout');
+    expect(body.upstream.type).toBe('timeout');
+    expect(body.upstream.message).toContain('Anthropic');
+  });
+
+  it('maps a connection failure to 502 upstream_unreachable', async () => {
+    routeFetch({
+      anthropic: () => {
+        throw new TypeError('fetch failed');
+      },
+    });
+
+    const token = await signToken();
+    const event = makeAnthropicEvent(token, {
+      model: 'claude-opus-4-7',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+    const result = (await handler(event)) as APIGatewayProxyStructuredResultV2;
+
+    expect(result.statusCode).toBe(502);
+    const body = JSON.parse(result.body as string);
+    expect(body.error).toBe('upstream_unreachable');
+    expect(body.upstream.type).toBe('unreachable');
+  });
+
   it('returns 429 with Retry-After when the total rate limit is exceeded', async () => {
     // Total counter increment returns count > limit on first call.
     ddbMock.on(UpdateCommand).resolvesOnce({ Attributes: { count: 101 } });
