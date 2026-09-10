@@ -370,7 +370,16 @@ All proxy-originated error responses have a JSON body of the form:
 | 429     | `upstream_rate_limited`   | USDA returned 429 / `OVER_RATE_LIMIT` (over-quota)                          | `upstream` (type, message)                     |
 | 503     | `upstream_not_configured` | Upstream key not populated in Secrets Manager, or USDA 403 `API_KEY_*`      | `upstream` (type, message) for the USDA case   |
 | 4xx/5xx | `upstream_error`          | Upstream returned non-2xx (other than rate-limit); status forwarded         | `upstream` (type, message)                     |
+| 502     | `upstream_unreachable`    | Proxy couldn't connect to the upstream (DNS / TLS / connection reset)       | `upstream` (type `unreachable`, message)       |
+| 504     | `upstream_timeout`        | Upstream didn't answer within the proxy's deadline (27 s; see below)        | `upstream` (type `timeout`, message)           |
 | 500     | (none)                    | Unexpected internal error; Lambda default response (not this JSON shape)    | —                                              |
+
+**Deadlines.** The Lambda runs with a 29 s timeout (API Gateway HTTP APIs cap the integration at 30
+s) and every upstream `fetch` aborts at `UPSTREAM_TIMEOUT_MS` (27 s), so a slow provider yields
+`504 upstream_timeout` rather than a killed function. Before MSP048 the function timeout was 10 s
+with no fetch deadline, and any Anthropic call over ~10 s (Opus on a large image) surfaced as API
+Gateway's own `500 {"message":"Internal Server Error"}`, which carries nothing the client can act
+on.
 
 The recommended client mapping:
 
@@ -385,6 +394,10 @@ The recommended client mapping:
   off and retry, surface as a distinct UI message from the proxy's own quota
 - **503 `upstream_not_configured`** → brief backoff and retry; usually transient during proxy
   rollout, but a persistent 503 means the upstream API key is missing or invalid (operator action)
+- **504 `upstream_timeout`** → the provider ran past the proxy's 27 s deadline; retry once, and for
+  Anthropic suggest a faster model or a smaller image
+- **502 `upstream_unreachable`** → provider connectivity from the proxy's side, not the client's;
+  backoff and retry
 - **5xx other** → standard backoff with jitter
 - **4xx other** → user-facing error, no retry
 

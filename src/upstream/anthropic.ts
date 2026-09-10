@@ -1,5 +1,5 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-import { UpstreamError } from './errors';
+import { fetchUpstream, UpstreamError } from './errors';
 
 export { UpstreamError };
 
@@ -77,7 +77,7 @@ export async function proxyMessages(
         ? Buffer.from(callerBody, 'base64').toString('utf-8')
         : callerBody;
 
-  const response = await fetch(ANTHROPIC_URL, {
+  const response = await fetchUpstream('Anthropic', ANTHROPIC_URL, {
     method: 'POST',
     headers: outboundHeaders,
     body,
@@ -143,7 +143,7 @@ export async function proxyModels(
   }
 
   const apiKey = await getUpstreamApiKey();
-  const response = await fetch(url, {
+  const response = await fetchUpstream('Anthropic', url, {
     method: 'GET',
     headers: {
       ...forwardedHeaders,

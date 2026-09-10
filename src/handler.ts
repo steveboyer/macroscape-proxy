@@ -301,7 +301,11 @@ function errorResponse(err: unknown, logger: RequestLogger): APIGatewayProxyStru
       }),
     };
   }
-  if (err instanceof AuthError || err instanceof UpstreamError) {
+  if (err instanceof UpstreamError) {
+    logger.setError(err.reason);
+    return jsonResponse(err.statusCode, { error: err.reason, ...err.extra });
+  }
+  if (err instanceof AuthError) {
     logger.setError(err.reason);
     return jsonResponse(err.statusCode, { error: err.reason });
   }

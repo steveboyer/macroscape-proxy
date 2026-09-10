@@ -3,7 +3,7 @@
 This file is the single source of truth for macroscape-proxy's backlog and history.
 
 Every item has a permanent ID (`MSP###`). Refer to items by ID. New items take the next free number
-(currently **MSP048** is next). IDs never change once assigned, even if items are reordered, edited,
+(currently **MSP049** is next). IDs never change once assigned, even if items are reordered, edited,
 or completed. The `MSP` prefix predates the macroscape rebrand (MSP039) and is preserved so IDs
 remain stable.
 
@@ -80,6 +80,22 @@ remain stable.
 
 (Most recent first; ID order is reverse-chronological.)
 
+- [x] **MSP048** — Slow Anthropic calls surfaced as API Gateway's generic
+      `500 {"message":"Internal Server Error"}` — useless to the client, which showed "API error
+      (500). Check your connection". The Lambda timeout was 10 s and the upstream `fetch` had no
+      deadline, so an Opus label scan that took 10.5 s outlived the function; Lambda killed it and
+      APIGW answered with its own body, never a proxy envelope.
+
+      `lib/macroscape-proxy-stack.ts`: function timeout 10 s → 29 s (the APIGW HTTP API integration
+      ceiling is 30 s) and a new `UPSTREAM_TIMEOUT_MS=27000` env var kept adjacent to it.
+      `src/upstream/errors.ts` gains `fetchUpstream(provider, url, init)` — `fetch` with
+      `AbortSignal.timeout`, mapping a `TimeoutError` to `504 upstream_timeout` and undici's
+      `TypeError: fetch failed` to `502 upstream_unreachable`, both with an `upstream: { type,
+      message }` block naming the provider — and `UpstreamError` carries an `extra` object that
+      `errorResponse` spreads into the envelope. Anthropic messages / models and USDA search all go
+      through it. CONTRACT.md documents the two new rows, the deadline, and the client mapping.
+      Tests: timeout → 504 and connection failure → 502 on `/v1/anthropic/messages`.
+
 - [x] **MSP047** — Issue proxy session tokens instead of using Apple's `id_token` as the bearer
       credential on every request.
 
@@ -106,7 +122,7 @@ remain stable.
 
       Also from review: the `kid` in the unknown-key error is attacker-controlled and reaches CloudWatch, so it's now clamped to 32 sanitized characters (log-injection hygiene); the signing-key doc claimed values were base64url when `parseSigningKeys` uses the literal UTF-8 bytes, which would have misled anyone rotating with an encoded key; and the container-lifetime key cache means a compromised key survives rotation until containers recycle, now filed as [[MSP046]] rather than left in a source comment.
 
-      19 cases in `test/sessions.test.ts` cover rotation, reuse-revokes-chain, stale-epoch, expired, unknown-token and lost-race paths, plus signing-key parsing and an assertion that the raw refresh token never reaches the stored item. The two regression cases added for the fixes above were both confirmed to fail against the pre-fix ordering before being kept. `npm run lint`, `npm run build`, `npm test` (37 passing) and `cdk synth` all clean. **Not deployed** — the stack change (new secret, new env vars) needs a `cdk deploy` before the routes exist in production. The iOS half is macroscape MS154.
+      19 cases in `test/sessions.test.ts` cover rotation, reuse-revokes-chain, stale-epoch, expired, unknown-token and lost-race paths, plus signing-key parsing and an assertion that the raw refresh token never reaches the stored item. The two regression cases added for the fixes above were both confirmed to fail against the pre-fix ordering before being kept. `npm run lint`, `npm run build`, `npm test` (37 passing) and `cdk synth` all clean. **Deployed** in PR #14 (squash-merged to `main`, Deploy workflow green), and confirmed live: `405` on GET, `401 invalid_refresh_token` for a junk token, `400 invalid_request` for an empty body. The iOS half (macroscape MS154 / MS155) then exercised the real path on device — Sign in with Apple followed by a working AI call — so the session exchange is proven end to end, not just unit-tested.
 
 - [x] **MSP045** — Add `GET /v1/anthropic/models`, forwarding to Anthropic's Models API.
 
@@ -116,7 +132,7 @@ remain stable.
 
       Two bounded-resource decisions worth knowing. The 5-minute module-scope response cache is keyed on `anthropic-version` plus the forwarded query params, which makes the key space **caller-controlled** — so the map is capped at 32 entries and dropped wholesale on overflow rather than growing unbounded for any authenticated caller cycling `after_id`. And the route is carved out of the shared daily total: `checkAndIncrement` grew a `RateLimitOptions` argument (`countTowardTotal`, `fallbackGroupLimit`) so `models` bumps only its own counter. A model-list fetch isn't an AI call, and the client fetches on launch — charging it would spend the user's budget on startup. `fallbackGroupLimit` (50) is in code rather than only in `DEFAULT_DAILY_LIMIT_MODELS`, so an unset env var can't silently remove the *only* limit the route has.
 
-      Five integration cases in `test/handler.integration.test.ts` cover the happy path, the cache hit (asserting upstream isn't called twice), 405 on non-GET, the sanitized upstream error, and the group-scoped 429. `npm run lint`, `npm run build`, `npm test` (18 passing) and `cdk synth` all clean. **Not deployed** — the route exists in production only after a `cdk deploy`.
+      Five integration cases in `test/handler.integration.test.ts` cover the happy path, the cache hit (asserting upstream isn't called twice), 405 on non-GET, the sanitized upstream error, and the group-scoped 429. `npm run lint`, `npm run build`, `npm test` (18 passing) and `cdk synth` all clean. **Deployed** in PR #14 alongside MSP047; live and requiring auth (`401 missing_bearer_token` unauthenticated). Unblocks macroscape MS131, whose text still says otherwise.
 
 - [x] **MSP044** — Bug: USDA 403 (invalid/unconfigured key) was reported to iOS as a rate limit.
 
