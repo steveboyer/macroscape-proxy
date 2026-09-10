@@ -31,6 +31,20 @@ export const groupUsageKey = (appleUserId: string, group: string, date: Date): I
   sk: `DATE#${toUtcDateString(date)}`,
 });
 
+// Refresh-token record (MSP047). Keyed by the SHA-256 of the token, never the
+// token itself: a database dump is then useless for authenticating, since the
+// stored value can't be presented and can't be reversed into one that can.
+export const sessionKey = (refreshTokenHash: string): ItemKey => ({
+  pk: `SESSION#${refreshTokenHash}`,
+  sk: 'REFRESH',
+});
+
+// Consumed rows are kept (not deleted) so a replayed token is distinguishable
+// from an unknown one — that difference is what makes reuse detection possible.
+// The grace period keeps them readable past their own expiry for the same reason.
+export const sessionTtl = (expiresAt: Date, graceDays = 30): number =>
+  Math.floor(expiresAt.getTime() / 1000) + graceDays * 86_400;
+
 export const usageTtl = (date: Date, retentionDays = DEFAULT_USAGE_RETENTION_DAYS): number => {
   const startOfNextDayUtc = Date.UTC(
     date.getUTCFullYear(),

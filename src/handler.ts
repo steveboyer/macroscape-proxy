@@ -4,10 +4,18 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from 'aws-lambda';
 import { authenticate, AuthError } from './auth/authenticate';
+import {
+  beginRefresh,
+  completeRefresh,
+  logoutSession,
+  startSession,
+  verifyAppleAssertion,
+  type SessionResponse,
+} from './auth/sessions';
 import { upsertUser } from './db/users';
 import { createRequestLogger, type RequestLogger } from './logging/logger';
 import { checkAndIncrement, RateLimitError } from './rateLimit/dailyLimit';
-import { proxyMessages, UpstreamError } from './upstream/anthropic';
+import { proxyMessages, proxyModels, UpstreamError } from './upstream/anthropic';
 import { proxyFoodsSearch } from './upstream/usda';
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
@@ -39,10 +47,142 @@ async function dispatch(
   if (path === '/v1/anthropic/messages') {
     return handleAnthropic(event, logger);
   }
+  if (path === '/v1/anthropic/models') {
+    return handleAnthropicModels(event, logger);
+  }
   if (path === '/v1/usda/foods/search') {
     return handleFoodsSearch(event, logger);
   }
+  // Session endpoints (MSP047). Not upstream-forwarding, so they sit outside
+  // the `/v1/<upstream>/<endpoint>` convention — same exception as /health.
+  if (path === '/v1/auth/session') {
+    return handleAuthSession(event, logger);
+  }
+  if (path === '/v1/auth/refresh') {
+    return handleAuthRefresh(event, logger);
+  }
+  if (path === '/v1/auth/logout') {
+    return handleAuthLogout(event, logger);
+  }
   return jsonResponse(404, { error: 'not_found', path });
+}
+
+// Auth routes get their own counter and stay off the shared total: a token
+// refresh isn't an AI call, and charging it would let background refreshes
+// spend the user's daily budget. One device refreshing hourly costs ~24/day;
+// this leaves room for several.
+//
+// Note what this does and doesn't bound. The counter is per-user, so it can
+// only be charged once a request resolves to a user — a guess at a random
+// refresh token, or an unverifiable Apple assertion, is rejected before that
+// and costs one DynamoDB read or one JWKS verification, uncounted. Guessing a
+// 256-bit token isn't a realistic attack, and API Gateway throttling is what
+// bounds raw request volume; this limit bounds *authenticated* auth traffic.
+const AUTH_FALLBACK_DAILY_LIMIT = 200;
+
+async function handleAuthSession(
+  event: APIGatewayProxyEventV2,
+  logger: RequestLogger,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  if (event.requestContext.http.method !== 'POST') {
+    return jsonResponse(405, { error: 'method_not_allowed' });
+  }
+  try {
+    const body = parseJsonBody(event);
+    const appleIdToken = readStringField(body, 'appleIdToken');
+    if (!appleIdToken) {
+      throw new AuthError(400, 'invalid_request', 'body must include appleIdToken');
+    }
+    // Verify → charge → mint. Charging after the mint would leave an orphaned
+    // refresh row behind every 429.
+    const sub = await verifyAppleAssertion(appleIdToken);
+    logger.setUserId(sub);
+    await checkAndIncrement(sub, 'auth', {
+      countTowardTotal: false,
+      fallbackGroupLimit: AUTH_FALLBACK_DAILY_LIMIT,
+    });
+    const session = await startSession(sub);
+    return jsonResponse(200, sessionBody(session));
+  } catch (err) {
+    return errorResponse(err, logger);
+  }
+}
+
+async function handleAuthRefresh(
+  event: APIGatewayProxyEventV2,
+  logger: RequestLogger,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  if (event.requestContext.http.method !== 'POST') {
+    return jsonResponse(405, { error: 'method_not_allowed' });
+  }
+  try {
+    const body = parseJsonBody(event);
+    const refreshToken = readStringField(body, 'refreshToken');
+    if (!refreshToken) {
+      throw new AuthError(400, 'invalid_request', 'body must include refreshToken');
+    }
+    // Look up → charge → rotate. The old flow consumed the presented token
+    // before charging, so a 429 spent the client's refresh token without
+    // handing back the replacement — and the client's retry then read as a
+    // replay, revoking every session the user had.
+    const record = await beginRefresh(refreshToken);
+    logger.setUserId(record.userId);
+    await checkAndIncrement(record.userId, 'auth', {
+      countTowardTotal: false,
+      fallbackGroupLimit: AUTH_FALLBACK_DAILY_LIMIT,
+    });
+    const session = await completeRefresh(refreshToken, record);
+    return jsonResponse(200, sessionBody(session));
+  } catch (err) {
+    return errorResponse(err, logger);
+  }
+}
+
+async function handleAuthLogout(
+  event: APIGatewayProxyEventV2,
+  logger: RequestLogger,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  if (event.requestContext.http.method !== 'POST') {
+    return jsonResponse(405, { error: 'method_not_allowed' });
+  }
+  try {
+    const body = parseJsonBody(event);
+    const refreshToken = readStringField(body, 'refreshToken');
+    if (!refreshToken) {
+      throw new AuthError(400, 'invalid_request', 'body must include refreshToken');
+    }
+    await logoutSession(refreshToken);
+    return jsonResponse(200, { ok: true });
+  } catch (err) {
+    return errorResponse(err, logger);
+  }
+}
+
+function sessionBody(session: SessionResponse) {
+  return {
+    accessToken: session.accessToken,
+    accessExpiresIn: session.accessExpiresIn,
+    refreshToken: session.refreshToken,
+    refreshExpiresIn: session.refreshExpiresIn,
+  };
+}
+
+function parseJsonBody(event: APIGatewayProxyEventV2): unknown {
+  if (!event.body) return {};
+  const raw = event.isBase64Encoded
+    ? Buffer.from(event.body, 'base64').toString('utf-8')
+    : event.body;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new AuthError(400, 'invalid_request', 'body must be valid JSON');
+  }
+}
+
+function readStringField(body: unknown, field: string): string | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const value = (body as Record<string, unknown>)[field];
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 async function handleHealth(
@@ -76,6 +216,38 @@ async function handleAnthropic(
       event.isBase64Encoded ?? false,
       logger.requestId,
     );
+    logger.setUpstreamStatus(result.statusCode);
+    return {
+      statusCode: result.statusCode,
+      headers: result.headers,
+      body: result.body,
+    };
+  } catch (err) {
+    return errorResponse(err, logger);
+  }
+}
+
+// A model-list fetch isn't an AI call and the client caches the result, so it
+// gets its own `models` counter and stays off the shared total — otherwise an
+// app launch would spend part of the user's daily AI budget. The fallback keeps
+// the route bounded even with no DEFAULT_DAILY_LIMIT_MODELS configured.
+const MODELS_FALLBACK_DAILY_LIMIT = 50;
+
+async function handleAnthropicModels(
+  event: APIGatewayProxyEventV2,
+  logger: RequestLogger,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  if (event.requestContext.http.method !== 'GET') {
+    return jsonResponse(405, { error: 'method_not_allowed' });
+  }
+  try {
+    const claims = await authenticate(event);
+    logger.setUserId(claims.sub);
+    await checkAndIncrement(claims.sub, 'models', {
+      countTowardTotal: false,
+      fallbackGroupLimit: MODELS_FALLBACK_DAILY_LIMIT,
+    });
+    const result = await proxyModels(event.headers, event.queryStringParameters, logger.requestId);
     logger.setUpstreamStatus(result.statusCode);
     return {
       statusCode: result.statusCode,
@@ -129,7 +301,11 @@ function errorResponse(err: unknown, logger: RequestLogger): APIGatewayProxyStru
       }),
     };
   }
-  if (err instanceof AuthError || err instanceof UpstreamError) {
+  if (err instanceof UpstreamError) {
+    logger.setError(err.reason);
+    return jsonResponse(err.statusCode, { error: err.reason, ...err.extra });
+  }
+  if (err instanceof AuthError) {
     logger.setError(err.reason);
     return jsonResponse(err.statusCode, { error: err.reason });
   }

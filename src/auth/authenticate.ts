@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { verifyAppleIdToken, AppleTokenError, type AppleClaims } from './appleVerifier';
+import { AccessTokenError, looksLikeProxyToken, verifyAccessToken } from './sessionTokens';
 
 // Route-level wrapper around appleVerifier: Bearer extraction + verification +
 // uniform error type. Handler maps `AuthError` to a 401 JSON response;
@@ -16,11 +17,34 @@ export class AuthError extends Error {
   }
 }
 
+/**
+ * Accepts either credential during the MSP047 transition: a proxy-issued
+ * access token (the destination) or an Apple `id_token` (what clients sent
+ * before). Selection is by issuer rather than by trying both verifiers — a
+ * blind fallback would report the *second* verifier's failure for every bad
+ * token, which turns "your session expired" into a misleading Apple error.
+ *
+ * Drop the Apple branch once macroscape MS154 has shipped and been verified;
+ * it exists so an un-updated client keeps working across one release.
+ */
 export async function authenticate(event: APIGatewayProxyEventV2): Promise<AppleClaims> {
   const token = extractBearerToken(event);
   if (!token) {
     throw new AuthError(401, 'missing_bearer_token');
   }
+
+  if (looksLikeProxyToken(token)) {
+    try {
+      const claims = await verifyAccessToken(token);
+      return { sub: claims.sub, exp: claims.exp };
+    } catch (err) {
+      if (err instanceof AccessTokenError) {
+        throw new AuthError(401, err.reason, err.message);
+      }
+      throw err;
+    }
+  }
+
   try {
     return await verifyAppleIdToken(token);
   } catch (err) {
