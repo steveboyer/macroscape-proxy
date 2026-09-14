@@ -25,3 +25,7 @@ updates:
       # Prettier 3.9.x never converges on issues.md; see the TypeScript 6 / prettier pin commit.
       - dependency-name: prettier
         versions: ['>=3.9.0']
+      # typescript-eslint (even canary) declares peer typescript '<6.1.0', so TypeScript 7 breaks
+      # `npm ci` with ERESOLVE. Drop this once typescript-eslint supports TS 7.
+      - dependency-name: typescript
+        versions: ['>=7.0.0']
