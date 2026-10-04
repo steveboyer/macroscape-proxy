@@ -1,3 +1,6 @@
+> **⚠️ Unmaintained.** This proxy was retired in MacroScape MS240 and this repo is no longer
+> maintained. It is kept public as a portfolio sample.
+
 # macroscape-proxy
 
 [![CI](https://github.com/steveboyer/macroscape-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/steveboyer/macroscape-proxy/actions/workflows/ci.yml)
